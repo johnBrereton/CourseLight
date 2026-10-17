@@ -50,6 +50,23 @@ and set `MOODLE_TOKEN` to your own token. For Lehigh, the base URL is
 `/webservice/rest/server.php`. Moodle installed in a subdirectory is supported,
 for example `https://example.edu/moodle`.
 
+### Lehigh: sign in with SSO instead of pasting a token
+
+At Lehigh you can skip finding a token. After installing the requirements, run:
+
+```sh
+.venv/bin/python -m playwright install chromium
+.venv/bin/python login.py
+```
+
+A browser opens; sign in with your Lehigh account and approve Duo. `login.py`
+uses CourseSite's Moodle mobile-app login (the flow the official Moodle app
+uses) to get a token for your own account and writes `MOODLE_URL` and
+`MOODLE_TOKEN` to `.env`. It never sees your password. If a saved Lehigh session
+exists at `~/.lehigh-mcp/storage_state.json`, it tries that first. This token
+is a full Moodle app token, so it can do more than CourseLight's read allowlist
+uses; keep `.env` private, and run `login.py` again if the token stops working.
+
 Windows users can create the environment with `py -m venv .venv`, use
 `.venv\Scripts\python.exe` in place of `.venv/bin/python`, and copy the example
 file with `Copy-Item .env.example .env` in PowerShell.
