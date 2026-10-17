@@ -13,7 +13,10 @@ from dotenv import load_dotenv
 import httpx
 
 
-load_dotenv(Path(__file__).resolve().parent / '.env', override=False, interpolate=False)
+ENV_PATH = Path(__file__).resolve().parent / '.env'
+# Credentials already in the environment take precedence and are never reloaded from .env.
+EXTERNAL_KEYS = frozenset(key for key in ('MOODLE_URL', 'MOODLE_TOKEN') if os.environ.get(key))
+load_dotenv(ENV_PATH, override=False, interpolate=False)
 
 # This is the complete upstream API surface. There are no assessment, upload,
 # submission, or generic API tools, even when a token permits those operations.
@@ -63,7 +66,8 @@ class Moodle:
         self.token = os.getenv('MOODLE_TOKEN', '').strip()
         self.url = os.getenv('MOODLE_URL', '').strip().rstrip('/')
         if not self.token or not self.url:
-            raise MoodleError('configuration', 'Set MOODLE_URL and MOODLE_TOKEN in .env or the environment.')
+            raise MoodleError('not_signed_in', 'Not signed in to CourseSite. Call the login tool to sign in with Lehigh SSO, '
+                              'or set MOODLE_URL and MOODLE_TOKEN in .env.')
         try:
             parts = urlsplit(self.url)
             valid = (parts.scheme == 'https' and parts.hostname
@@ -140,6 +144,8 @@ class Moodle:
                 result = json.loads(payload)
             except (ValueError, UnicodeError):
                 raise MoodleError('invalid_response', 'Moodle did not return valid JSON.') from None
+            if isinstance(result, dict) and result.get('errorcode') == 'invalidtoken':
+                raise MoodleError('sign_in_expired', 'The CourseSite sign-in expired or was reset. Call the login tool to sign in again.')
             if isinstance(result, dict) and any(key in result for key in ('exception', 'errorcode', 'error')):
                 # Do not expose Moodle's raw messages, debug traces, or tokens.
                 raise MoodleError('moodle_error', 'Moodle rejected the request. Check token validity, web-service permissions, and course availability.')

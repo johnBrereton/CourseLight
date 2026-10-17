@@ -6,7 +6,8 @@ assignment requirements, read Moodle Pages, and review your released grades.
 
 CourseLight is the simpler companion to
 [CourseSite-MCP](https://github.com/johnBrereton/CourseSite-MCP). It contains eight
-tools and two Python source files. It has no quiz-attempt access, question/answer
+Moodle read tools, a Lehigh sign-in tool, seven read-only Lehigh Banner and Degree
+Works tools, and four Python source files. It has no quiz-attempt access, question/answer
 tools, uploads, assignment submissions, or generic API tool. Complete assessments
 and submit your own work directly in Moodle.
 
@@ -22,6 +23,22 @@ and submit your own work directly in Moodle.
 | `get_grades` | Read grades released to you for a course |
 | `get_upcoming_work` | Read upcoming action events in a time interval, with pagination |
 | `read_page` | Read the text of a Moodle Page, with pagination |
+| `login` | Lehigh only: open a browser to sign in with SSO and Duo for CourseSite, Banner, and Degree Works |
+
+At Lehigh, these read the registrar's systems through the same sign-in:
+
+| Tool | Purpose |
+| --- | --- |
+| `list_terms` | List Banner term codes, e.g. `202640` for Fall 2026 (no sign-in) |
+| `search_classes` | Search the class schedule: CRNs, times, rooms, instructors, seats, waitlists (no sign-in) |
+| `get_course_description` | Read a section's catalog description (no sign-in) |
+| `get_my_registration` | Read your registered classes for a term; past terms include grades |
+| `get_degree_audit` | Read your Degree Works audit: progress, advisors, met and unmet requirements |
+| `get_gpa` | Read cumulative and major GPA, credits, and GPA by term |
+| `get_course_history` | List every course on your record with term, grade, and credits |
+
+They never register for, add, or drop classes. Off campus, Degree Works needs the
+Lehigh VPN. A Degree Works audit doesn't replace advising.
 
 Quiz titles and deadlines may appear in a course outline or calendar. CourseLight
 does not open quiz attempts, retrieve their questions, save answers, or submit
@@ -52,18 +69,28 @@ for example `https://example.edu/moodle`.
 
 ### Lehigh: sign in with SSO instead of pasting a token
 
-At Lehigh you can skip finding a token. After installing the requirements, run:
+At Lehigh you can skip finding a token and creating `.env`. After installing the
+requirements, install the browser used for sign-in:
 
 ```sh
 .venv/bin/python -m playwright install chromium
-.venv/bin/python login.py
 ```
 
-A browser opens; sign in with your Lehigh account and approve Duo. `login.py`
+Then connect your MCP client (below) and just ask about your courses. When
+there's no token yet, or it has expired, tools report that you're not signed in
+and the client calls `login`: a browser opens, you sign in with your Lehigh
+account and approve Duo, and the token is saved and used right away. Later
+sessions reuse it. You can also sign in from a terminal with
+`.venv/bin/python login.py`, for example if your client times out long tool calls.
+
+`login.py`
 uses CourseSite's Moodle mobile-app login (the flow the official Moodle app
 uses) to get a token for your own account and writes `MOODLE_URL` and
-`MOODLE_TOKEN` to `.env`. It never sees your password. If a saved Lehigh session
-exists at `~/.lehigh-mcp/storage_state.json`, it tries that first. This token
+`MOODLE_TOKEN` to `.env`. In the same browser it then opens Degree Works and
+Banner and saves the Lehigh session to `~/.lehigh-mcp/storage_state.json` for
+those tools. It never sees your password. If a saved Lehigh session exists, it
+tries that first. Lehigh sessions expire sooner than the CourseSite token, so
+the Banner and Degree Works tools may ask you to sign in again first. This token
 is a full Moodle app token, so it can do more than CourseLight's read allowlist
 uses; keep `.env` private, and run `login.py` again if the token stops working.
 
@@ -114,10 +141,13 @@ submission or assessment-write functions. A token may have broader permissions
 outside this application. Where possible, ask for a service token restricted to
 the required reads. Credentials travel only to the configured HTTPS Moodle URL;
 redirects are not followed. Token fields and debug traces are stripped from tool
-results, and transport errors do not expose raw server responses.
+results, and transport errors do not expose raw server responses. The Lehigh
+session cookies are used only by a local headless browser on Lehigh's SSO,
+Banner, and Degree Works sites, and are never returned in tool results.
 
-There are no local journals, staged submissions, downloaded course files, or
-application data directories. `.env`, virtual environments, local MCP configuration,
+There are no local journals, staged submissions, or downloaded course files. The
+only application data is the Lehigh sign-in session in `~/.lehigh-mcp/`, outside
+the repository. `.env`, virtual environments, local MCP configuration,
 and logs are ignored by Git. The default stdio connection needs no tunnel key,
 hosting account, database, or public listener.
 

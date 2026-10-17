@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Get a CourseSite token by signing in with Lehigh SSO, then save it to .env.
+"""Sign in with Lehigh SSO once for CourseSite, Banner, and Degree Works.
 
-This uses Moodle's mobile-app login (admin/tool/mobile/launch.php), the same
-flow the official Moodle app uses on SSO sites. You sign in yourself in a real
-browser and approve Duo; the script never sees your password. If a saved Lehigh
-session exists (~/.lehigh-mcp/storage_state.json), it is tried first so you may
-not need to sign in again.
+The CourseSite token comes from Moodle's mobile-app login
+(admin/tool/mobile/launch.php), the same flow the official Moodle app uses on
+SSO sites, and is saved to .env. The same browser then opens Degree Works and
+Banner, and the resulting Lehigh session is saved to
+~/.lehigh-mcp/storage_state.json for those tools. You sign in yourself in a
+real browser and approve Duo; the script never sees your password. A saved
+Lehigh session is tried first so you may not need to sign in again.
 
     .venv/bin/python login.py            # Windows: .venv\\Scripts\\python.exe login.py
 """
@@ -13,7 +15,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import os
 from pathlib import Path
 import secrets
 import sys
@@ -21,13 +22,18 @@ from urllib.parse import urlencode
 
 from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
+from lehigh import BANNER, DEGREEWORKS, SESSION_PATH as LEHIGH_SESSION, SSO_HOST
+
 
 ENV_PATH = Path(__file__).resolve().parent / '.env'
 DEFAULT_URL = 'https://coursesite.lehigh.edu'
 SCHEME = 'moodlemobile'
-SSO_HOST = 'sso.cc.lehigh.edu'
-LEHIGH_SESSION = Path(os.getenv('LEHIGH_MCP_HOME', Path.home() / '.lehigh-mcp')) / 'storage_state.json'
 LOGIN_TIMEOUT_MS = 5 * 60 * 1000
+# Pages that establish each system's session after SSO, and the URL each lands on.
+LEHIGH_APPS = (
+    (f'{DEGREEWORKS}/worksheets/WEB31', DEGREEWORKS),
+    (f'{BANNER}/registration/registration', BANNER),
+)
 
 
 def read_env() -> dict[str, str]:
@@ -96,12 +102,34 @@ def capture_token(site_url: str, headless: bool) -> str | None:
                 break  # Saved session expired: the SSO login form is showing.
             page.wait_for_timeout(250)
             waited += 250
-        if not headless and found:
-            # Refresh the shared Lehigh session for the other Lehigh tools.
+        ready = bool(found) and open_lehigh_apps(context, headless)
+        if ready:
             LEHIGH_SESSION.parent.mkdir(parents=True, exist_ok=True)
             context.storage_state(path=str(LEHIGH_SESSION))
         browser.close()
-    return parse_token(found[0], site_url, passport) if found else None
+    return parse_token(found[0], site_url, passport) if ready else None
+
+
+def open_lehigh_apps(context, headless: bool) -> bool:
+    """Visit Degree Works and Banner so their sessions are saved with the SSO one.
+
+    Headless, any SSO prompt means the saved session is stale, so report failure
+    and let the visible browser handle it. In the visible browser, a page that
+    doesn't load (Degree Works needs the VPN off campus) is skipped rather than
+    failing the CourseSite sign-in.
+    """
+    page = context.new_page()
+    for url, landed in LEHIGH_APPS:
+        try:
+            page.goto(url)
+            page.wait_for_url(lambda current: current.startswith(landed),
+                              timeout=20_000 if headless else LOGIN_TIMEOUT_MS)
+            page.wait_for_load_state('networkidle')
+        except PlaywrightError:
+            if headless:
+                return False
+            print(f'Could not open {landed}; those tools may ask you to sign in again later.')
+    return True
 
 
 def main():
@@ -118,7 +146,7 @@ def main():
     if not token:
         sys.exit('No token received. Make sure you finished signing in, then try again.')
     write_env({'MOODLE_URL': site_url, 'MOODLE_TOKEN': token})
-    print(f'Saved MOODLE_URL and MOODLE_TOKEN to {ENV_PATH}. Restart your MCP client to use them.')
+    print(f'Saved MOODLE_URL and MOODLE_TOKEN to {ENV_PATH} and the Lehigh session to {LEHIGH_SESSION}.')
 
 
 if __name__ == '__main__':

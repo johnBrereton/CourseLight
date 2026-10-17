@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
-"""CourseLight: eight read-only tools for Moodle course planning and reference."""
+"""CourseLight: read-only Moodle tools for course planning and reference, plus Lehigh sign-in, Banner, and Degree Works."""
 from __future__ import annotations
 
 import atexit
 from functools import wraps
 from html.parser import HTMLParser
 from inspect import signature
+import os
+from pathlib import Path
+import subprocess
+import sys
 from threading import RLock
 import time
 from typing import Annotated, get_type_hints
 
+from dotenv import dotenv_values
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from moodle import Moodle, MoodleError, READ_FUNCTIONS
+import lehigh
+from moodle import ENV_PATH, EXTERNAL_KEYS, Moodle, MoodleError, READ_FUNCTIONS
 
 
 mcp = FastMCP('CourseLight', instructions=(
@@ -25,9 +31,17 @@ mcp = FastMCP('CourseLight', instructions=(
     'Quizzes and submissions must be handled by the user in Moodle. '
     'A missing grade, deadline, or calendar event does not prove completion or a zero grade. '
     'Follow pagination, report warnings and unavailable data, and cite the original Moodle links. '
-    'Use the user\'s timezone when presenting Unix timestamps.'
+    'Use the user\'s timezone when presenting Unix timestamps. '
+    'If a tool reports the user is not signed in or the sign-in expired, call login and tell the user '
+    'to finish signing in in the browser window that opens. '
+    'At Lehigh, CourseSite tools cover course content and released grades; the Banner and Degree Works '
+    'tools (list_terms, search_classes, get_course_description, get_my_registration, get_degree_audit, '
+    'get_gpa, get_course_history) cover the official schedule, registration, transcript, and degree '
+    'requirements. They are read-only and never register for or drop classes.'
 ))
 READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
+SIGN_IN = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True)
+ROOT = Path(__file__).resolve().parent
 PositiveID = Annotated[int, Field(gt=0)]
 Offset = Annotated[int, Field(ge=0)]
 _moodle = None
@@ -43,12 +57,49 @@ def client():
         return _moodle
 
 
+def reset_client() -> bool:
+    """Reload credentials from .env and drop the cached client. Return whether they changed.
+
+    Another CourseLight process (a chat or Code session) may have signed in and
+    rewritten .env since this one started.
+    """
+    global _moodle
+    with _lock:
+        saved = dotenv_values(ENV_PATH) if ENV_PATH.exists() else {}
+        changed = False
+        for key in ('MOODLE_URL', 'MOODLE_TOKEN'):
+            if key not in EXTERNAL_KEYS and saved.get(key) and saved[key] != os.environ.get(key):
+                os.environ[key] = saved[key]
+                changed = True
+        if _moodle is not None:
+            _moodle.close()
+            _moodle = None
+        return changed
+
+
+SIGN_IN_ERRORS = frozenset({'not_signed_in', 'sign_in_expired'})
+
+
+def clean(data):
+    """Redact credentials. Without a CourseSite token there is none to redact (public Banner reads)."""
+    try:
+        return client().clean(data)
+    except MoodleError:
+        return data
+
+
 def guarded(function):
     @wraps(function)
     def invoke(*args, **kwargs):
         try:
-            data = function(*args, **kwargs)
-            return {'ok': True, 'fetched_at': int(time.time()), 'data': client().clean(data)}
+            try:
+                data = function(*args, **kwargs)
+            except MoodleError as exc:
+                # Before asking the user to sign in, pick up a token another session saved.
+                if exc.code not in SIGN_IN_ERRORS or function.__name__ == 'login' or not reset_client():
+                    raise
+                data = function(*args, **kwargs)
+            return {'ok': True, 'fetched_at': int(time.time()), 'data': clean(data)}
         except MoodleError as exc:
             return {'ok': False, 'error': {'code': exc.code, 'message': str(exc)}}
         except Exception:
@@ -64,6 +115,27 @@ def guarded(function):
     )
     invoke.__annotations__ = hints
     return invoke
+
+
+@mcp.tool(annotations=SIGN_IN)
+@guarded
+def login() -> dict:
+    """Open a browser so the user can sign in with Lehigh SSO and Duo for CourseSite, Banner, and Degree Works.
+
+    Call this when another tool reports that the user is not signed in or the
+    sign-in expired. The user completes sign-in in the window; this waits up to
+    about five minutes. The saved token is never returned.
+    """
+    try:
+        # A separate process keeps the browser off this server's stdio channel.
+        result = subprocess.run([sys.executable, str(ROOT / 'login.py')], cwd=ROOT,
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=360)
+    except subprocess.TimeoutExpired:
+        raise MoodleError('login_timeout', 'Sign-in timed out. Ask the user to call login again and finish signing in.') from None
+    if result.returncode != 0:
+        raise MoodleError('login_failed', 'Sign-in was not completed. Ask the user to try again, or run login.py in a terminal.')
+    reset_client()
+    return {'signed_in_as': client().identity().get('fullname'), 'site': client().url}
 
 
 @mcp.tool(annotations=READ)
@@ -224,6 +296,73 @@ def read_page(course_id: PositiveID, page_id: PositiveID, offset: Offset = 0,
             'warnings': data.get('warnings', []),
             'extraction_note': 'Text only; images, formatting, and embedded resources are omitted. Open the source for the full page.',
             'url': f"{client().url}/mod/page/view.php?id={page['coursemodule']}"}
+
+
+Term = Annotated[str, Field(pattern=r'^\d{6}$', description='Banner term code from list_terms, e.g. "202640" for Fall 2026')]
+CRN = Annotated[str, Field(pattern=r'^\d{5}$', description='Five-digit course reference number')]
+
+
+@mcp.tool(annotations=READ)
+@guarded
+def list_terms(max_terms: Annotated[int, Field(ge=1, le=30)] = 10) -> dict:
+    """List Lehigh Banner terms and their codes, newest first. No sign-in needed."""
+    return {'terms': lehigh.get_terms(max_terms)}
+
+
+@mcp.tool(annotations=READ)
+@guarded
+def search_classes(term: Term, subject: Annotated[str, Field(pattern=r'^[A-Za-z]{2,4}$')] | None = None,
+                   course_number: Annotated[str, Field(pattern=r'^\d{3}$')] | None = None,
+                   keyword: Annotated[str, Field(max_length=100)] | None = None, open_only: bool = False,
+                   max_results: Annotated[int, Field(ge=1, le=100)] = 50) -> dict:
+    """Search Lehigh's Banner class schedule: sections, CRNs, times, rooms, instructors, seats, and waitlists.
+
+    No sign-in needed. subject is a code like "CSE"; course_number keeps leading zeros, like "017".
+    Keyword matches are broad and sorted by subject.
+    """
+    return lehigh.search_classes(term, subject, course_number, keyword, open_only, max_results)
+
+
+@mcp.tool(annotations=READ)
+@guarded
+def get_course_description(term: Term, crn: CRN) -> dict:
+    """Read the Banner catalog description for one section, by term and CRN. No sign-in needed."""
+    return {'term': term, 'crn': crn, 'description': lehigh.get_course_description(term, crn)}
+
+
+@mcp.tool(annotations=READ)
+@guarded
+def get_my_registration(term: Term) -> dict:
+    """Read the classes the user is registered for in a Banner term, with meeting times, rooms, and instructors.
+
+    Past terms include midterm and final grades. Needs the Lehigh sign-in.
+    """
+    return lehigh.get_registration(term)
+
+
+@mcp.tool(annotations=READ)
+@guarded
+def get_degree_audit() -> dict:
+    """Read the user's Lehigh Degree Works audit: percent complete, programs, advisors, and each requirement.
+
+    Rules show status, courses applied, and options for what is still needed. Off campus,
+    Degree Works needs the Lehigh VPN. The audit doesn't replace advising.
+    """
+    return lehigh.summarize_audit(lehigh.fetch_audit())
+
+
+@mcp.tool(annotations=READ)
+@guarded
+def get_gpa() -> dict:
+    """Read the user's cumulative and major GPA, credits earned and in progress, and GPA by term from Degree Works."""
+    return lehigh.summarize_gpa(lehigh.fetch_audit())
+
+
+@mcp.tool(annotations=READ)
+@guarded
+def get_course_history() -> dict:
+    """List every course on the user's Degree Works record with term, grade, credits, and transfer status."""
+    return {'courses': lehigh.course_history(lehigh.fetch_audit())}
 
 
 if __name__ == '__main__':
