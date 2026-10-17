@@ -11,3 +11,4 @@ __pycache__/
 .mcp.json
 reports/
 *.log
+node_modules/

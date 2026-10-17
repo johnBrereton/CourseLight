@@ -4,14 +4,9 @@ A small, read-only MCP server for Moodle, including Lehigh CourseSite. Connect
 your own account to an MCP client to look up courses, plan deadlines, understand
 assignment requirements, read Moodle Pages, and review your released grades.
 
-CourseLight is the simpler companion to
-[CourseSite-MCP](https://github.com/johnBrereton/CourseSite-MCP). It contains eight
-Moodle read tools, a Lehigh sign-in tool, eight read-only Lehigh Banner and Degree
-Works tools, and four Python source files. It has no quiz-attempt access, question/answer
-tools, uploads, assignment submissions, or generic API tool. Complete assessments
-and submit your own work directly in Moodle.
 
-## What it does
+
+## Read tools
 
 | Tool | Purpose |
 | --- | --- |
@@ -27,6 +22,7 @@ and submit your own work directly in Moodle.
 
 At Lehigh, these read the registrar's systems through the same sign-in:
 
+## Registration tools
 | Tool | Purpose |
 | --- | --- |
 | `list_terms` | List Banner term codes, e.g. `202640` for Fall 2026 (no sign-in) |
@@ -38,22 +34,18 @@ At Lehigh, these read the registrar's systems through the same sign-in:
 | `get_gpa` | Read cumulative and major GPA, credits, and GPA by term |
 | `get_course_history` | List every course on your record with term, grade, and credits |
 
-They never register for, add, or drop classes. Off campus, Degree Works needs the
-Lehigh VPN. A Degree Works audit doesn't replace advising.
+Off campus, Degree Works needs the Lehigh VPN. A Degree Works audit doesn't replace advising.
 
-To plan a semester, ask something like "Using courselight, look at my degree audit
-and build me some schedules for next semester, no Friday classes." The
-`plan_next_semester` prompt (in your client's prompt or `/` menu) walks through the
-same steps: read the audit, search next term for what you still need, ask your
-preferences, and build schedules. Schedules are suggestions: prerequisites,
-major restrictions, and registration holds aren't checked, so confirm with your
-advisor and register yourself in Banner.
+## Visualized tools
 
-Quiz titles and deadlines may appear in a course outline or calendar. CourseLight
-does not open quiz attempts, retrieve their questions, save answers, or submit
-them. Resource links are for you to open in Moodle; there is no file downloader,
-PDF/Office extraction, or download proxy. Moodle Pages are the Page activity type,
-not arbitrary web pages or uploaded documents.
+Visualized tools display interactive components inline in an MCP Apps-compatible
+host. They return validated `structuredContent` and a short text fallback.
+
+| Tool | Purpose |
+| --- | --- |
+| `show_courses` | Fetch selected courses and this week’s assignment deadlines into expandable rows |
+
+
 
 ## Setup
 
@@ -76,37 +68,6 @@ and set `MOODLE_TOKEN` to your own token. For Lehigh, the base URL is
 `/webservice/rest/server.php`. Moodle installed in a subdirectory is supported,
 for example `https://example.edu/moodle`.
 
-### Lehigh: sign in with SSO instead of pasting a token
-
-At Lehigh you can skip finding a token and creating `.env`. After installing the
-requirements, install the browser used for sign-in:
-
-```sh
-.venv/bin/python -m playwright install chromium
-```
-
-Then connect your MCP client (below) and just ask about your courses. When
-there's no token yet, or it has expired, tools report that you're not signed in
-and the client calls `login`: a browser opens, you sign in with your Lehigh
-account and approve Duo, and the token is saved and used right away. Later
-sessions reuse it. You can also sign in from a terminal with
-`.venv/bin/python login.py`, for example if your client times out long tool calls.
-
-`login.py`
-uses CourseSite's Moodle mobile-app login (the flow the official Moodle app
-uses) to get a token for your own account and writes `MOODLE_URL` and
-`MOODLE_TOKEN` to `.env`. In the same browser it then opens Degree Works and
-Banner and saves the Lehigh session to `~/.lehigh-mcp/storage_state.json` for
-those tools. It never sees your password. If a saved Lehigh session exists, it
-tries that first. Lehigh sessions expire sooner than the CourseSite token, so
-the Banner and Degree Works tools may ask you to sign in again first. This token
-is a full Moodle app token, so it can do more than CourseLight's read allowlist
-uses; keep `.env` private, and run `login.py` again if the token stops working.
-
-Windows users can create the environment with `py -m venv .venv`, use
-`.venv\Scripts\python.exe` in place of `.venv/bin/python`, and copy the example
-file with `Copy-Item .env.example .env` in PowerShell.
-
 ### Connect an MCP client
 
 Use a client that supports local **stdio** MCP servers. Add the following server
@@ -126,8 +87,9 @@ configuration, replacing both paths with the absolute paths on your machine:
 The same example is in `mcp.json.example`. Your client determines where to put
 this configuration. On Windows, use `python.exe` under `.venv\Scripts` and escape
 backslashes in JSON, or use forward slashes. The client starts the server when
-needed. There is no separate web server or public endpoint. The server reads
-`.env` beside its source files regardless of the client's working directory;
+needed. The default stdio connection starts no web server or public endpoint.
+The server reads `.env` beside its source files regardless of the client's
+working directory;
 existing environment variables take precedence. Restart the connection after
 changing credentials or updating the tool definitions.
 
@@ -176,7 +138,7 @@ hosting account, database, or public listener.
 - Each response is capped at 20 MiB. Moodle reads use a 30-second request timeout
   and at most three attempts for temporary network or service failures.
 
-Tools return `{ "ok": true, "fetched_at": ..., "data": ... }` or
+The read tools return `{ "ok": true, "fetched_at": ..., "data": ... }` or
 `{ "ok": false, "error": { "code": ..., "message": ... } }`.
 Warnings and unavailable data should be reported, rather than interpreted as
 completion or missing coursework. Always verify consequential dates and grades
