@@ -1,0 +1,149 @@
+# CourseLight
+
+A small, read-only MCP server for Moodle, including Lehigh CourseSite. Connect
+your own account to an MCP client to look up courses, plan deadlines, understand
+assignment requirements, read Moodle Pages, and review your released grades.
+
+CourseLight is the simpler companion to
+[CourseSite-MCP](https://github.com/johnBrereton/CourseSite-MCP). It contains eight
+tools and two Python source files. It has no quiz-attempt access, question/answer
+tools, uploads, assignment submissions, or generic API tool. Complete assessments
+and submit your own work directly in Moodle.
+
+## What it does
+
+| Tool | Purpose |
+| --- | --- |
+| `get_profile` | Confirm the connected account and available read functions |
+| `list_courses` | List your enrolled courses and their Moodle links |
+| `get_course_contents` | Browse sections, activity descriptions, and resource links |
+| `list_assignments` | Read one course's assignment requirements and dates |
+| `get_assignment_status` | Read one assignment's requirements and your submission status |
+| `get_grades` | Read grades released to you for a course |
+| `get_upcoming_work` | Read upcoming action events in a time interval, with pagination |
+| `read_page` | Read the text of a Moodle Page, with pagination |
+
+Quiz titles and deadlines may appear in a course outline or calendar. CourseLight
+does not open quiz attempts, retrieve their questions, save answers, or submit
+them. Resource links are for you to open in Moodle; there is no file downloader,
+PDF/Office extraction, or download proxy. Moodle Pages are the Page activity type,
+not arbitrary web pages or uploaded documents.
+
+## Setup
+
+You need Python 3.10 or newer and your own Moodle web-service token. Your
+institution must enable Moodle web services and allow the functions listed below.
+CourseLight cannot enable them or create a token for you. If your institution does
+not offer a token, ask its Moodle administrator about permitted access.
+
+```sh
+git clone https://github.com/johnBrereton/CourseLight.git
+cd CourseLight
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+```
+
+Edit `.env`: replace `MOODLE_URL` with your institution's HTTPS Moodle base URL
+and set `MOODLE_TOKEN` to your own token. For Lehigh, the base URL is
+`https://coursesite.lehigh.edu`. Do not include `/login/index.php` or
+`/webservice/rest/server.php`. Moodle installed in a subdirectory is supported,
+for example `https://example.edu/moodle`.
+
+Windows users can create the environment with `py -m venv .venv`, use
+`.venv\Scripts\python.exe` in place of `.venv/bin/python`, and copy the example
+file with `Copy-Item .env.example .env` in PowerShell.
+
+### Connect an MCP client
+
+Use a client that supports local **stdio** MCP servers. Add the following server
+configuration, replacing both paths with the absolute paths on your machine:
+
+```json
+{
+  "mcpServers": {
+    "courselight": {
+      "command": "/absolute/path/to/CourseLight/.venv/bin/python",
+      "args": ["/absolute/path/to/CourseLight/server.py"]
+    }
+  }
+}
+```
+
+The same example is in `mcp.json.example`. Your client determines where to put
+this configuration. On Windows, use `python.exe` under `.venv\Scripts` and escape
+backslashes in JSON, or use forward slashes. The client starts the server when
+needed. There is no separate web server or public endpoint. The server reads
+`.env` beside its source files regardless of the client's working directory;
+existing environment variables take precedence. Restart the connection after
+changing credentials or updating the tool definitions.
+
+Start with “List my courses,” then “Show the assignments and upcoming deadlines
+for this course.” You can also ask “Explain this Moodle Page and link to the
+source” or “Show my released grades.” Use the tools for study support and planning
+in accordance with your instructor's rules.
+
+## Privacy and boundaries
+
+Each person runs their own copy with their own account. Share the repository,
+never a configured connection or a filled-in `.env` file. Anyone who can invoke
+your connection can read the course information available to that account.
+Course information returned by the tools is sent to your MCP client and may be
+processed or retained according to that client's settings.
+
+CourseLight's transport enforces a fixed allowlist of read functions. These
+requests use POST because that is how Moodle's REST API works; they do not invoke
+submission or assessment-write functions. A token may have broader permissions
+outside this application. Where possible, ask for a service token restricted to
+the required reads. Credentials travel only to the configured HTTPS Moodle URL;
+redirects are not followed. Token fields and debug traces are stripped from tool
+results, and transport errors do not expose raw server responses.
+
+There are no local journals, staged submissions, downloaded course files, or
+application data directories. `.env`, virtual environments, local MCP configuration,
+and logs are ignored by Git. The default stdio connection needs no tunnel key,
+hosting account, database, or public listener.
+
+## Data limitations
+
+- A calendar is not an exhaustive list of work. Combine upcoming events with
+  assignments and actual submission status.
+- A missing grade is not a zero; a missing deadline or calendar event is not proof
+  that work is complete. A draft is not a final submission.
+- Course and assignment access depend on Moodle permissions and availability.
+  `get_profile` reports advertised API functions, not access to every activity.
+- `get_upcoming_work` takes Unix timestamps in seconds. Keep the same time range
+  and pass `next_after_event_id` as `after_event_id` until it is `null`.
+- For `read_page`, use a page module's `instance` from `get_course_contents` as
+  `page_id`. Follow `next_offset` using the same page until it is `null`.
+  Images, embedded documents, layout, and diagrams are omitted; check the original.
+- Each response is capped at 20 MiB. Moodle reads use a 30-second request timeout
+  and at most three attempts for temporary network or service failures.
+
+Tools return `{ "ok": true, "fetched_at": ..., "data": ... }` or
+`{ "ok": false, "error": { "code": ..., "message": ... } }`.
+Warnings and unavailable data should be reported, rather than interpreted as
+completion or missing coursework. Always verify consequential dates and grades
+against the linked source in Moodle.
+
+## Required Moodle functions
+
+`moodle.py` contains the full allowlist:
+
+```text
+core_webservice_get_site_info
+core_enrol_get_users_courses
+core_course_get_contents
+mod_assign_get_assignments
+mod_assign_get_submission_status
+gradereport_user_get_grade_items
+core_calendar_get_action_events_by_timesort
+core_calendar_get_action_events_by_course
+mod_page_get_pages_by_courses
+```
+
+If `get_profile` reports a function unavailable, that tool needs your institution's
+administrator to enable the corresponding read in the service. A Moodle error
+may also mean an expired token, a role restriction, or an unavailable activity.
+Share the tool name and error code when asking for help, never your token, grades,
+private course content, or a token-bearing URL.

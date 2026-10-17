@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "courselight": {
+      "command": "/absolute/path/to/CourseLight/.venv/bin/python",
+      "args": ["/absolute/path/to/CourseLight/server.py"]
+    }
+  }
+}
