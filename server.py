@@ -35,9 +35,10 @@ mcp = FastMCP('CourseLight', instructions=(
     'If a tool reports the user is not signed in or the sign-in expired, call login and tell the user '
     'to finish signing in in the browser window that opens. '
     'At Lehigh, CourseSite tools cover course content and released grades; the Banner and Degree Works '
-    'tools (list_terms, search_classes, get_course_description, get_my_registration, get_degree_audit, '
-    'get_gpa, get_course_history) cover the official schedule, registration, transcript, and degree '
-    'requirements. They are read-only and never register for or drop classes.'
+    'tools (list_terms, search_classes, get_course_description, build_schedules, get_my_registration, '
+    'get_degree_audit, get_gpa, get_course_history) cover the official schedule, registration, transcript, '
+    'and degree requirements. They are read-only and never register for or drop classes. '
+    'To plan a semester, follow the plan_next_semester prompt: audit first, then search, then build_schedules.'
 ))
 READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 SIGN_IN = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True)
@@ -300,6 +301,10 @@ def read_page(course_id: PositiveID, page_id: PositiveID, offset: Offset = 0,
 
 Term = Annotated[str, Field(pattern=r'^\d{6}$', description='Banner term code from list_terms, e.g. "202640" for Fall 2026')]
 CRN = Annotated[str, Field(pattern=r'^\d{5}$', description='Five-digit course reference number')]
+Subject = Annotated[str, Field(pattern=r'^[A-Za-z]{2,4}$', description='Subject code, e.g. "CSE"')]
+CourseNumber = Annotated[str, Field(pattern=r'^\d{3}$', description='Three digits with leading zeros, e.g. "017"')]
+Course = Annotated[str, Field(pattern=r'^[A-Za-z]{2,4} ?\d{3}$', description='Subject and number, e.g. "CSE 340"')]
+Clock = Annotated[str, Field(pattern=r'^([01]\d|2[0-3]):[0-5]\d$', description='24-hour time, e.g. "09:00"')]
 
 
 @mcp.tool(annotations=READ)
@@ -311,16 +316,42 @@ def list_terms(max_terms: Annotated[int, Field(ge=1, le=30)] = 10) -> dict:
 
 @mcp.tool(annotations=READ)
 @guarded
-def search_classes(term: Term, subject: Annotated[str, Field(pattern=r'^[A-Za-z]{2,4}$')] | None = None,
-                   course_number: Annotated[str, Field(pattern=r'^\d{3}$')] | None = None,
+def search_classes(term: Term, subject: Subject | None = None, course_number: CourseNumber | None = None,
+                   course_number_from: CourseNumber | None = None, course_number_to: CourseNumber | None = None,
+                   attribute: Annotated[str, Field(pattern=r'^[A-Za-z]{1,5}$')] | None = None,
                    keyword: Annotated[str, Field(max_length=100)] | None = None, open_only: bool = False,
-                   max_results: Annotated[int, Field(ge=1, le=100)] = 50) -> dict:
-    """Search Lehigh's Banner class schedule: sections, CRNs, times, rooms, instructors, seats, and waitlists.
+                   offset: Offset = 0, max_results: Annotated[int, Field(ge=1, le=100)] = 50) -> dict:
+    """Search or browse Lehigh's Banner class schedule: sections, CRNs, times, rooms, instructors, seats, waitlists.
 
-    No sign-in needed. subject is a code like "CSE"; course_number keeps leading zeros, like "017".
-    Keyword matches are broad and sorted by subject.
+    No sign-in needed. With only a term, this browses every section. Filters combine:
+    course_number_from/to give a range (a Degree Works option like "CSE 200-399");
+    attribute is a requirement code such as HU (humanities), SS (social science),
+    NS (natural science), MA (math), LS (lab science), W or WRIT (writing), Q (quantitative).
+    Keyword matches are broad. Follow next_offset with the same filters until it is null.
     """
-    return lehigh.search_classes(term, subject, course_number, keyword, open_only, max_results)
+    return lehigh.search_classes(term, subject, course_number, course_number_from, course_number_to,
+                                 attribute, keyword, open_only, offset, max_results)
+
+
+@mcp.tool(annotations=READ)
+@guarded
+def build_schedules(term: Term, courses: Annotated[list[Course], Field(min_length=1, max_length=10)],
+                    count: Annotated[int, Field(ge=1, le=10)] | None = None, open_only: bool = True,
+                    earliest_start: Clock | None = None, latest_end: Clock | None = None,
+                    days_off: Annotated[str, Field(pattern=r'^[MTWRFSU]*$')] = '',
+                    max_credits: Annotated[float, Field(gt=0, le=30)] | None = None,
+                    max_results: Annotated[int, Field(ge=1, le=10)] = 5) -> dict:
+    """Build conflict-free Banner schedules for a term from candidate courses. No sign-in needed.
+
+    Each schedule picks one registrable option per course, pairing lectures with
+    their required linked labs or recitations, and checks every meeting for time
+    conflicts. count picks that many courses from a longer candidate list (default:
+    all of them). days_off uses Banner day letters: M T W R(Thursday) F S U.
+    Results are ranked by fewest days on campus, then least time between classes.
+    Prerequisites and registration restrictions are not checked; the user registers in Banner.
+    """
+    return lehigh.build_schedules(term, courses, count, open_only, earliest_start, latest_end,
+                                  days_off.upper(), max_credits, max_results)
 
 
 @mcp.tool(annotations=READ)
@@ -363,6 +394,27 @@ def get_gpa() -> dict:
 def get_course_history() -> dict:
     """List every course on the user's Degree Works record with term, grade, credits, and transfer status."""
     return {'courses': lehigh.course_history(lehigh.fetch_audit())}
+
+
+@mcp.prompt()
+def plan_next_semester(term: str = '', preferences: str = '') -> str:
+    """Plan next semester at Lehigh: check the degree audit, find open classes, and build schedules."""
+    return f"""Help me plan my next semester at Lehigh using CourseLight. Read-only: never register me for anything.
+
+1. Call get_degree_audit. List the requirements that are not complete. Skip courses already
+   applied, completed, or in progress (also check get_my_registration for the current term).
+2. Choose the term: {term or 'call list_terms and use the next fall or spring term after the current one. Terms marked "View Only" can still be searched'}.
+3. For each unmet requirement, turn its options into searches with search_classes and open_only:
+   a course like "CSE 303" becomes subject + course_number; a range like "CSE 200-399" becomes
+   subject + course_number_from/course_number_to; "any course with attribute HU" becomes attribute.
+   Note which candidate courses are offered and what each one counts toward.
+4. My preferences: {preferences or 'none given yet. Ask me for a credit load (usually 15 to 18 credits), times or days to avoid, and any interests that help choose between options'}.
+5. Call build_schedules with the candidate courses, using count to pick how many to take and my
+   preferences as filters. If nothing fits, relax one filter at a time and say which.
+6. Show two or three schedules: a weekly view, CRNs, credits, and which requirement each course
+   satisfies. Point out tradeoffs, limited seats, and that prerequisites and restrictions aren't
+   checked, so I should confirm with my advisor and register myself in Banner.
+"""
 
 
 if __name__ == '__main__':

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from datetime import date, datetime
 import html
 import json
 import logging
@@ -148,32 +149,246 @@ def get_terms(max_terms: int) -> list[dict]:
     return _banner('GET', '/classSearch/getTerms', params={'searchTerm': '', 'offset': 1, 'max': max_terms}).json()
 
 
-def search_classes(term: str, subject: str | None, course_number: str | None, keyword: str | None,
-                   open_only: bool, max_results: int) -> dict:
+@contextmanager
+def _search_session(term: str):
+    """An HTTP client with `term` selected; Banner ties searches to a term chosen in the session."""
     with httpx.Client(timeout=30, follow_redirects=True, trust_env=False) as client:
-        # Banner ties searches to a term chosen earlier in the same session.
         _banner('GET', '/term/termSelection', client, params={'mode': 'search'})
         _banner('POST', '/term/search', client, params={'mode': 'search'},
                 data={'term': term, 'studyPath': '', 'studyPathText': '', 'startDatepicker': '', 'endDatepicker': ''})
-        params = {'txt_term': term, 'pageOffset': 0, 'pageMaxSize': max_results,
-                  'sortColumn': 'subjectDescription', 'sortDirection': 'asc'}
-        if subject:
-            params['txt_subject'] = subject.upper()
-        if course_number:
-            params['txt_courseNumber'] = course_number
-        if keyword:
-            params['txt_keywordlike'] = keyword
-        if open_only:
-            params['chk_open_only'] = 'true'
-        body = _banner('GET', '/searchResults/searchResults', client, params=params).json()
+        yield client
+
+
+def _search(client: httpx.Client, term: str, filters: dict, offset: int, size: int) -> dict:
+    # Without a reset, Banner can return the previous search's results in the same session.
+    _banner('POST', '/classSearch/resetDataForm', client)
+    params = {'txt_term': term, 'pageOffset': offset, 'pageMaxSize': size,
+              'sortColumn': 'subjectDescription', 'sortDirection': 'asc', **filters}
+    return _banner('GET', '/searchResults/searchResults', client, params=params).json()
+
+
+def search_classes(term: str, subject: str | None, course_number: str | None, course_number_from: str | None,
+                   course_number_to: str | None, attribute: str | None, keyword: str | None,
+                   open_only: bool, offset: int, max_results: int) -> dict:
+    filters = {}
+    if subject:
+        filters['txt_subject'] = subject.upper()
+    if course_number:
+        filters['txt_courseNumber'] = course_number
+    if course_number_from or course_number_to:
+        filters['txt_course_number_range'] = course_number_from or '000'
+        filters['txt_course_number_range_to'] = course_number_to or '999'
+    if attribute:
+        filters['txt_attribute'] = attribute.upper()
+    if keyword:
+        filters['txt_keywordlike'] = keyword
+    if open_only:
+        filters['chk_open_only'] = 'true'
+    with _search_session(term) as client:
+        body = _search(client, term, filters, offset, max_results)
     sections = [_section(item) for item in body.get('data') or []]
-    return {'total_matches': body.get('totalCount', len(sections)), 'returned': len(sections), 'sections': sections}
+    total = body.get('totalCount', len(sections))
+    end = offset + len(sections)
+    return {'total_matches': total, 'offset': offset, 'returned': len(sections),
+            'next_offset': end if sections and end < total else None, 'sections': sections}
 
 
 def get_course_description(term: str, crn: str) -> str:
     fragment = _banner('POST', '/searchResults/getCourseDescription',
                        data={'term': term, 'courseReferenceNumber': crn}).text
     return html.unescape(re.sub(r'<[^>]+>', ' ', fragment)).strip()
+
+
+# Schedule building
+
+MAX_SCHEDULES_EXAMINED = 20_000
+MAX_PACKAGES_PER_COURSE = 60
+
+
+def _minutes(value: str) -> int:
+    return int(value[:2]) * 60 + int(value[2:])
+
+
+def _date(value: str | None) -> date | None:
+    try:
+        return datetime.strptime(value or '', '%m/%d/%Y').date()
+    except ValueError:
+        return None
+
+
+def _slots(section: dict) -> list[tuple]:
+    """(day, start, end, first date, last date) for each timed weekly meeting; TBA and online meetings have none."""
+    out = []
+    for item in section.get('meetingsFaculty') or []:
+        meeting = item.get('meetingTime') or {}
+        if not (meeting.get('beginTime') and meeting.get('endTime')):
+            continue
+        start, end = _minutes(meeting['beginTime']), _minutes(meeting['endTime'])
+        first, last = _date(meeting.get('startDate')), _date(meeting.get('endDate'))
+        out += [(code, start, end, first, last) for key, code in DAYS if meeting.get(key)]
+    return out
+
+
+def _clash(a: list[tuple], b: list[tuple]) -> bool:
+    for day, start, end, first, last in a:
+        for other_day, other_start, other_end, other_first, other_last in b:
+            dates_overlap = not (first and last and other_first and other_last) or (first <= other_last and other_first <= last)
+            if day == other_day and start < other_end and other_start < end and dates_overlap:
+                return True
+    return False
+
+
+def _credits(section: dict) -> float:
+    credits = section.get('creditHours')
+    return float(credits if credits is not None else section.get('creditHourLow') or 0)
+
+
+def _fits(section: dict, open_only: bool, earliest: int | None, latest: int | None, days_off: str) -> bool:
+    if open_only and (section.get('seatsAvailable') or 0) <= 0:
+        return False
+    for day, start, end, _, _ in _slots(section):
+        if day in days_off or (earliest is not None and start < earliest) or (latest is not None and end > latest):
+            return False
+    return True
+
+
+def _packages(sections: list[dict]) -> list[list[dict]]:
+    """Every registrable set for one course: a lone section, or a lecture with its linked lab/recitation.
+
+    Banner link identifiers are two characters: a section with "3C" is in group 3
+    and needs a section from group C; the "C3" labs point back to group 3.
+    """
+    def linked(section):
+        link = section.get('linkIdentifier') or ''
+        return bool(section.get('isSectionLinked')) and len(link) == 2
+
+    groups: dict[str, list[dict]] = {}
+    for section in sections:
+        if linked(section):
+            groups.setdefault(section['linkIdentifier'][0], []).append(section)
+    packages = [[section] for section in sections if not linked(section)]
+    starts = [section for members in groups.values() for section in members
+              if section.get('scheduleTypeDescription') == 'Lecture'] or next(iter(groups.values()), [])
+
+    def extend(chosen):
+        needed = chosen[-1]['linkIdentifier'][1]
+        if needed in {section['linkIdentifier'][0] for section in chosen}:
+            yield chosen
+            return
+        for section in groups.get(needed, []):
+            if not any(_clash(_slots(section), _slots(other)) for other in chosen):
+                yield from extend(chosen + [section])
+
+    for start in starts:
+        for package in extend([start]):
+            packages.append(package)
+            if len(packages) >= MAX_PACKAGES_PER_COURSE:
+                return packages
+    return packages
+
+
+def _course_sections(client: httpx.Client, term: str, course: str) -> list[dict]:
+    subject, number = course.split()
+    sections, offset = [], 0
+    while True:
+        body = _search(client, term, {'txt_subject': subject, 'txt_courseNumber': number}, offset, 100)
+        page = body.get('data') or []
+        sections += page
+        offset += len(page)
+        if not page or offset >= body.get('totalCount', 0) or offset >= 500:
+            return sections
+
+
+def _clock(minutes: int) -> str:
+    hour, minute = divmod(minutes, 60)
+    return f"{(hour - 1) % 12 + 1}:{minute:02d}{'am' if hour < 12 else 'pm'}"
+
+
+def _rank(slots: list[tuple]) -> tuple[int, int, int]:
+    """Sort key: fewest days on campus, then least time between classes, then latest first class."""
+    by_day: dict[str, list[tuple[int, int]]] = {}
+    for day, start, end, _, _ in slots:
+        by_day.setdefault(day, []).append((start, end))
+    gaps = 0
+    for meetings in by_day.values():
+        meetings.sort()
+        gaps += sum(max(0, later[0] - earlier[1]) for earlier, later in zip(meetings, meetings[1:]))
+    return len(by_day), gaps, -min((m[0][0] for m in by_day.values()), default=0)
+
+
+def _describe(schedule: list[tuple[str, list[dict]]]) -> dict:
+    sections = [section for _, package in schedule for section in package]
+    slots = [(day, start, end, f"{section.get('subject')} {section.get('courseNumber')} {section.get('scheduleTypeDescription')}")
+             for section in sections for day, start, end, _, _ in _slots(section)]
+    week = {code: [f'{_clock(start)}-{_clock(end)} {label}' for _, start, end, label in sorted(
+                (slot for slot in slots if slot[0] == code), key=lambda slot: slot[1])]
+            for _, code in DAYS if any(slot[0] == code for slot in slots)}
+    days, gaps, _ = _rank([(day, start, end, None, None) for day, start, end, _ in slots])
+    return {
+        'courses': [course for course, _ in schedule],
+        'total_credits': sum(_credits(section) for section in sections),
+        'days_on_campus': days,
+        'earliest_start': _clock(min(start for _, start, _, _ in slots)) if slots else None,
+        'latest_end': _clock(max(end for _, _, end, _ in slots)) if slots else None,
+        'minutes_between_classes': gaps,
+        'week': week,
+        'sections': [_section(section) for section in sections],
+    }
+
+
+def build_schedules(term: str, courses: list[str], count: int | None, open_only: bool, earliest_start: str | None,
+                    latest_end: str | None, days_off: str, max_credits: float | None, max_results: int) -> dict:
+    earliest = _minutes(earliest_start.replace(':', '')) if earliest_start else None
+    latest = _minutes(latest_end.replace(':', '')) if latest_end else None
+    courses = list(dict.fromkeys(re.sub(r'^([A-Z]+)\s*(\d+)$', r'\1 \2', course.upper().strip()) for course in courses))
+    count = min(count or len(courses), len(courses))
+    options, report = {}, {}
+    with _search_session(term) as client:
+        for course in courses:
+            sections = _course_sections(client, term, course)
+            packages = [package for package in _packages(sections)
+                        if all(_fits(section, open_only, earliest, latest, days_off) for section in package)]
+            report[course] = {'sections_offered': len(sections), 'options_after_filters': len(packages)}
+            if not sections:
+                report[course]['note'] = 'Not offered this term.'
+            elif not packages:
+                report[course]['note'] = 'No section fits the filters (seats, times, or days off).'
+            if packages:
+                options[course] = packages
+
+    found, examined = [], 0
+    available = [course for course in courses if course in options]
+
+    def search(index: int, chosen: list[tuple[str, list[dict]]], slots: list[tuple], credits: float):
+        nonlocal examined
+        if examined >= MAX_SCHEDULES_EXAMINED:
+            return
+        if len(chosen) == count:
+            examined += 1
+            found.append((_rank(slots), chosen))
+            return
+        if len(available) - index < count - len(chosen):
+            return
+        course = available[index]
+        for package in options[course]:
+            package_slots = [slot for section in package for slot in _slots(section)]
+            package_credits = sum(_credits(section) for section in package)
+            if max_credits is not None and credits + package_credits > max_credits:
+                continue
+            if not _clash(package_slots, slots):
+                search(index + 1, chosen + [(course, package)], slots + package_slots, credits + package_credits)
+        search(index + 1, chosen, slots, credits)  # Leave this course out when picking `count` of them.
+
+    if len(available) >= count:
+        search(0, [], [], 0.0)
+    found.sort(key=lambda item: item[0])
+    return {
+        'term': term, 'courses_requested': courses, 'courses_per_schedule': count,
+        'schedules_found': len(found), 'search_capped': examined >= MAX_SCHEDULES_EXAMINED,
+        'schedules': [_describe(chosen) for _, chosen in found[:max_results]], 'courses': report,
+        'ranking': _rank.__doc__.split(': ', 1)[1],
+        'note': 'Prerequisites, restrictions, and registration holds are not checked. Register yourself in Banner.',
+    }
 
 
 def _registration(term: str) -> dict:

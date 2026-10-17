@@ -6,7 +6,7 @@ assignment requirements, read Moodle Pages, and review your released grades.
 
 CourseLight is the simpler companion to
 [CourseSite-MCP](https://github.com/johnBrereton/CourseSite-MCP). It contains eight
-Moodle read tools, a Lehigh sign-in tool, seven read-only Lehigh Banner and Degree
+Moodle read tools, a Lehigh sign-in tool, eight read-only Lehigh Banner and Degree
 Works tools, and four Python source files. It has no quiz-attempt access, question/answer
 tools, uploads, assignment submissions, or generic API tool. Complete assessments
 and submit your own work directly in Moodle.
@@ -30,8 +30,9 @@ At Lehigh, these read the registrar's systems through the same sign-in:
 | Tool | Purpose |
 | --- | --- |
 | `list_terms` | List Banner term codes, e.g. `202640` for Fall 2026 (no sign-in) |
-| `search_classes` | Search the class schedule: CRNs, times, rooms, instructors, seats, waitlists (no sign-in) |
+| `search_classes` | Search or browse the class schedule by subject, number or number range, attribute (HU, SS, W, ...), or keyword: CRNs, times, rooms, instructors, seats, waitlists (no sign-in) |
 | `get_course_description` | Read a section's catalog description (no sign-in) |
+| `build_schedules` | Build conflict-free schedules from candidate courses, pairing lectures with their labs, with filters for open seats, times, days off, and credits (no sign-in) |
 | `get_my_registration` | Read your registered classes for a term; past terms include grades |
 | `get_degree_audit` | Read your Degree Works audit: progress, advisors, met and unmet requirements |
 | `get_gpa` | Read cumulative and major GPA, credits, and GPA by term |
@@ -39,6 +40,14 @@ At Lehigh, these read the registrar's systems through the same sign-in:
 
 They never register for, add, or drop classes. Off campus, Degree Works needs the
 Lehigh VPN. A Degree Works audit doesn't replace advising.
+
+To plan a semester, ask something like "Using courselight, look at my degree audit
+and build me some schedules for next semester, no Friday classes." The
+`plan_next_semester` prompt (in your client's prompt or `/` menu) walks through the
+same steps: read the audit, search next term for what you still need, ask your
+preferences, and build schedules. Schedules are suggestions: prerequisites,
+major restrictions, and registration holds aren't checked, so confirm with your
+advisor and register yourself in Banner.
 
 Quiz titles and deadlines may appear in a course outline or calendar. CourseLight
 does not open quiz attempts, retrieve their questions, save answers, or submit
