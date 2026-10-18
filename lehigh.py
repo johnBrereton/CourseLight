@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import date, datetime
 import html
+from html.parser import HTMLParser
 import json
 import logging
 import os
@@ -29,6 +30,10 @@ SSO_HOST = 'sso.cc.lehigh.edu'
 SESSION_PATH = Path(os.getenv('LEHIGH_MCP_HOME', Path.home() / '.lehigh-mcp')) / 'storage_state.json'
 DAYS = (('monday', 'M'), ('tuesday', 'T'), ('wednesday', 'W'), ('thursday', 'R'),
         ('friday', 'F'), ('saturday', 'S'), ('sunday', 'U'))
+CLASS_SEARCH_URL = f'{BANNER}/term/termSelection?mode=search'
+PLANS_URL = f'{BANNER}/term/termSelection?mode=plan'
+READINESS_URL = f'{BANNER}/term/termSelection?mode=preReg'
+AUDIT_URL = f'{DEGREEWORKS}/worksheets/WEB31'
 
 for _name in ('httpx', 'httpcore'):
     # Match moodle.py: no transport logs with URLs or response fragments.
@@ -83,11 +88,102 @@ def _get_json(context, url: str, params: dict | None = None):
     text = response.text()
     if _on_sso(response.url) or text.lstrip().startswith('<'):
         raise _expired()
-    return json.loads(text)
+    if not response.ok:
+        raise LehighError('http_error', 'Banner could not return the requested information.')
+    try:
+        return json.loads(text)
+    except ValueError:
+        raise LehighError('invalid_response', 'Banner did not return valid JSON.') from None
 
 
 def _in_browser(function, *args):
     return _browser_thread.submit(function, *args).result()
+
+
+class _BannerText(HTMLParser):
+    """Keep table columns and boolean grouping as text; never execute returned HTML."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self.hidden = 0
+        self.cells = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {'script', 'style', 'template', 'noscript'}:
+            self.hidden += 1
+        if self.hidden:
+            return
+        if tag in {'br', 'p', 'div', 'tr', 'h2', 'h3', 'li'}:
+            self.parts.append('\n')
+        if tag == 'tr':
+            self.cells = 0
+        if tag in {'td', 'th'}:
+            if self.cells:
+                self.parts.append(' | ')
+            self.cells += 1
+
+    def handle_endtag(self, tag):
+        if tag in {'script', 'style', 'template', 'noscript'}:
+            self.hidden = max(0, self.hidden - 1)
+        if not self.hidden and tag in {'p', 'div', 'tr', 'h2', 'h3', 'li'}:
+            self.parts.append('\n')
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.parts.append(re.sub(r'\s+', ' ', data))
+
+    def text(self):
+        return '\n'.join(line.strip() for line in ''.join(self.parts).splitlines() if line.strip())
+
+
+def _banner_text(source: str) -> str:
+    parser = _BannerText()
+    parser.feed(source)
+    parser.close()
+    return parser.text()
+
+
+def _bootstrap(source: str, key: str):
+    """Read a literal JSON property from Banner's bootstrap; never evaluate JavaScript."""
+    start = re.search(r'window\.bootstraps\s*=\s*\{', source)
+    if start:
+        fragment = source[start.end():].split('</script>', 1)[0]
+        # Banner puts top-level properties on separate lines. Do not accidentally
+        # match a similarly named property inside a plan's literal JSON value.
+        match = re.search(r'(?:^|\n)[ \t]*(?:"' + re.escape(key) + r'"|' + re.escape(key) + r')\s*:\s*', fragment)
+        if match:
+            try:
+                return json.JSONDecoder().raw_decode(fragment[match.end():])[0]
+            except ValueError:
+                pass
+    raise LehighError('invalid_response', 'Banner did not return the expected planning data.')
+
+
+def _select_term(context, term: str, mode: str):
+    """Select a term in an ephemeral browser session, without saving any academic record."""
+    targets = {'plan': '/plan/selectPlan', 'preReg': '/prepareRegistration/prepareRegistration'}
+    _open(context, f'{BANNER}/term/termSelection?mode={mode}').close()
+    response = context.request.post(f'{BANNER}/term/search', params={'mode': mode}, form={
+        'term': term, 'studyPath': '', 'studyPathText': '', 'startDatepicker': '', 'endDatepicker': ''})
+    if _on_sso(response.url):
+        raise _expired()
+    try:
+        body = response.json()
+    except ValueError:
+        raise LehighError('invalid_response', 'Banner did not return a term-selection response.') from None
+    if not response.ok or not isinstance(body, dict) or body.get('fwdURL') != '/StudentRegistrationSsb/ssb' + targets[mode]:
+        raise LehighError('term_unavailable', 'Banner did not allow this term to be selected. Check the term in Banner.')
+    # Use fixed destinations rather than following URLs returned by upstream content.
+    return BANNER + targets[mode]
+
+
+def _page_html(context, url: str, params: dict | None = None) -> str:
+    response = context.request.get(url, params=params)
+    if _on_sso(response.url):
+        raise _expired()
+    if not response.ok:
+        raise LehighError('http_error', 'Banner could not return the requested information.')
+    return response.text()
 
 
 # Banner
@@ -129,6 +225,7 @@ def _section(section: dict) -> dict:
         'waitlist': f"{section.get('waitCount')}/{section.get('waitCapacity')}",
         'open': section.get('openSection'),
         'campus': html.unescape(section.get('campusDescription') or ''),
+        'url': CLASS_SEARCH_URL,
     }
 
 
@@ -190,13 +287,147 @@ def search_classes(term: str, subject: str | None, course_number: str | None, co
     total = body.get('totalCount', len(sections))
     end = offset + len(sections)
     return {'total_matches': total, 'offset': offset, 'returned': len(sections),
-            'next_offset': end if sections and end < total else None, 'sections': sections}
+            'next_offset': end if sections and end < total else None, 'sections': sections,
+            'url': CLASS_SEARCH_URL}
 
 
 def get_course_description(term: str, crn: str) -> str:
     fragment = _banner('POST', '/searchResults/getCourseDescription',
                        data={'term': term, 'courseReferenceNumber': crn}).text
     return html.unescape(re.sub(r'<[^>]+>', ' ', fragment)).strip()
+
+
+def get_section_requirements(term: str, crn: str) -> dict:
+    """Fixed public reads, preserving prerequisite operators, parentheses and minimum grades."""
+    fields = {'prerequisites': ('getSectionPrerequisites', 'preReqs'),
+              'corequisites': ('getCorequisites', 'coReqs'),
+              'restrictions': ('getRestrictions', 'restrictions')}
+    out = {'term': term, 'crn': crn, 'url': CLASS_SEARCH_URL, 'unavailable': []}
+    with httpx.Client(timeout=30, trust_env=False) as client:
+        for field, (endpoint, section) in fields.items():
+            try:
+                source = _banner('POST', '/searchResults/' + endpoint, client,
+                                 data={'term': term, 'courseReferenceNumber': crn}).text
+                if not re.search(r'<section\b[^>]*aria-labelledby=["\']' + section + r'["\']', source, re.I):
+                    raise LehighError('invalid_response', 'Banner did not return section requirements.')
+                text = _banner_text(source)
+                if not text:
+                    raise LehighError('invalid_response', 'Banner returned an empty requirement response.')
+                out[field] = {'text': text[:50000], 'total_characters': len(text), 'truncated': len(text) > 50000}
+            except LehighError as exc:
+                out[field] = None
+                out['unavailable'].append({'field': field, 'code': exc.code})
+    out['complete'] = not out['unavailable'] and not any(out[field]['truncated'] for field in fields)
+    out['note'] = 'Reported requirements only, not an eligibility decision. Preserve AND/OR grouping and minimum grades; unavailable information does not mean no requirements.'
+    return out
+
+
+def _saved_plans(term: str) -> dict:
+    with _session() as context:
+        source = _page_html(context, _select_term(context, term, 'plan'))
+        plans = _bootstrap(source, 'plans')
+        total = _bootstrap(source, 'planCount')
+        if not isinstance(plans, list) or type(total) is not int or total < 0:
+            raise LehighError('invalid_response', 'Banner did not return plans for the selected term.')
+        out, warnings = [], []
+        for plan in plans:
+            courses = plan.get('planCourses')
+            if not isinstance(courses, list) or str(plan.get('term')) != term:
+                raise LehighError('invalid_response', 'Banner returned incomplete plan information.')
+            meetings = {}
+            try:
+                _page_html(context, f'{BANNER}/plan/plan', {'select': plan['sequenceNumber']})
+                rows = _get_json(context, f'{BANNER}/plan/getMeetingInformationForPlan')
+                if not isinstance(rows, list):
+                    raise LehighError('invalid_response', 'Banner did not return plan meeting information.')
+                meetings = {row['id']: row for row in rows}
+            except LehighError as exc:
+                if exc.code in {'not_signed_in', 'sign_in_expired'}:
+                    raise
+                warnings.append({'plan_number': plan.get('sequenceNumber'), 'field': 'meetings', 'code': exc.code})
+            items = []
+            for course in courses:
+                details = meetings.get(course.get('id'))
+                if details is None:
+                    warnings.append({'plan_number': plan.get('sequenceNumber'), 'field': 'meetings',
+                                     'course': f"{course.get('subject')} {course.get('courseNumber')}", 'code': 'unavailable'})
+                items.append({
+                    'course': f"{course.get('subject')} {course.get('courseNumber')}",
+                    'title': course.get('courseTitle'), 'crn': course.get('courseReferenceNumber'),
+                    'section': course.get('section'), 'type': course.get('scheduleTypeDescription'),
+                    'credits': course.get('creditHours'), 'status': course.get('planStatus'),
+                    'registered': course.get('isRegistered'),
+                    'instructors': [item.get('displayName') for item in course.get('instructors') or []],
+                    'meetings': _meetings(details.get('meetingTimes') or []) if details is not None else None,
+                })
+            out.append({'plan_number': plan.get('sequenceNumber'), 'name': plan.get('description'),
+                        'preferred': plan.get('preferredIndicator'), 'last_modified': plan.get('lastModified'),
+                        'planned_credits': plan.get('totalPlannedCreditHours'), 'courses': items})
+    return {'term': term, 'plans': out, 'total_plans': total, 'returned': len(out),
+            'complete': len(out) == total and not warnings, 'warnings': warnings, 'url': PLANS_URL,
+            'coverage': 'Banner Plan Ahead plans only; Degree Works planner plans are not included. Planned courses are not necessarily registered.'}
+
+
+def get_saved_plans(term: str) -> dict:
+    return _in_browser(_saved_plans, term)
+
+
+class _ReadinessHTML(HTMLParser):
+    """Read only Banner's status messages; ignore curriculum and profile information."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.depth = 0
+        self.target = None
+        self.checks = []
+        self.parts = []
+        self.status = None
+        self.hidden = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {'script', 'style', 'template', 'noscript'}:
+            self.hidden += 1
+        if tag == 'div':
+            self.depth += 1
+            classes = dict(attrs).get('class', '').split()
+            for name, result in (('reg-status-success', 'allowed'), ('reg-status-error', 'blocked'), ('reg-status-info', 'info')):
+                if self.target is None and name in classes:
+                    self.target, self.status, self.parts = self.depth, result, []
+        if self.target is not None and tag in {'p', 'br', 'tr', 'li'}:
+            self.parts.append('\n')
+
+    def handle_endtag(self, tag):
+        if tag in {'script', 'style', 'template', 'noscript'}:
+            self.hidden = max(0, self.hidden - 1)
+        if tag == 'div':
+            if self.target == self.depth:
+                message = '\n'.join(line.strip() for line in ''.join(self.parts).splitlines() if line.strip())
+                if message:
+                    self.checks.append({'status': self.status, 'message': message})
+                self.target = None
+            self.depth -= 1
+
+    def handle_data(self, data):
+        if self.target is not None and not self.hidden:
+            self.parts.append(re.sub(r'\s+', ' ', data))
+
+
+def _registration_readiness(term: str) -> dict:
+    with _session() as context:
+        source = _page_html(context, _select_term(context, term, 'preReg'))
+    parser = _ReadinessHTML()
+    parser.feed(source)
+    parser.close()
+    if not parser.checks:
+        raise LehighError('invalid_response', 'Banner did not return registration-readiness checks. No eligibility conclusion can be drawn.')
+    windows = [match.group() for item in parser.checks for match in re.finditer(
+        r'\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}\s*[AP]M\s*-\s*\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}\s*[AP]M', item['message'])]
+    return {'term': term, 'checks': parser.checks, 'registration_windows': windows,
+            'credit_limits': None, 'unavailable': ['credit_limits'], 'url': READINESS_URL,
+            'note': 'These are Banner-reported checks, not a guarantee of registration. Credit limits are not exposed by this page. Window times are as displayed by Banner; no timezone conversion is applied.'}
+
+
+def get_registration_readiness(term: str) -> dict:
+    return _in_browser(_registration_readiness, term)
 
 
 # Schedule building
@@ -387,6 +618,7 @@ def build_schedules(term: str, courses: list[str], count: int | None, open_only:
         'schedules_found': len(found), 'search_capped': examined >= MAX_SCHEDULES_EXAMINED,
         'schedules': [_describe(chosen) for _, chosen in found[:max_results]], 'courses': report,
         'ranking': _rank.__doc__.split(': ', 1)[1],
+        'url': CLASS_SEARCH_URL,
         'note': 'Prerequisites, restrictions, and registration holds are not checked. Register yourself in Banner.',
     }
 
@@ -412,7 +644,8 @@ def _registration(term: str) -> dict:
         'midterm_grade': item.get('gradeMidTerm'),
         'final_grade': item.get('grade'),
     } for item in data.get('registrations') or []]
-    return {'term': term, 'total_credits': data.get('totalCredit'), 'classes': classes}
+    return {'term': term, 'total_credits': data.get('totalCredit'), 'classes': classes,
+            'url': f'{BANNER}/registrationHistory/registrationHistory'}
 
 
 def get_registration(term: str) -> dict:
@@ -487,7 +720,7 @@ def _course_option(course: dict) -> str:
 def _rule(rule: dict) -> dict:
     percent = _num(rule.get('percentComplete'))
     out = {'label': rule.get('label'), 'percent_complete': percent,
-           'status': 'complete' if percent == 100 else 'in progress' if 'inProgressIncomplete' in rule else 'not met'}
+           'status': 'complete' if percent == 100 else 'in progress' if 'inProgressIncomplete' in rule else 'unknown' if percent is None else 'not met'}
     applied = (rule.get('classesAppliedToRule') or {}).get('classArray') or []
     if applied:
         out['applied'] = [f"{item.get('discipline')} {item.get('number')}" for item in applied]
@@ -497,7 +730,8 @@ def _rule(rule: dict) -> dict:
             out['needs'] = f"{requirement['classesBegin']} class(es)"
         elif requirement.get('creditsBegin'):
             out['needs'] = f"{requirement['creditsBegin']} credits"
-        out['options'] = [_course_option(item) for item in requirement['courseArray'][:20]]
+        out['options'] = [_course_option(item) for item in requirement['courseArray']]
+        out['option_count'] = len(out['options'])
     children = [_rule(item) for item in rule.get('ruleArray') or []]
     if children:
         out['rules'] = children
@@ -511,13 +745,20 @@ def _credits_required(block: dict) -> float | None:
     return None
 
 
+def audit_date(audit: dict):
+    header = audit.get('auditHeader') or {}
+    return header.get('dateYear') and f"{header.get('dateMonth')}/{header.get('dateDay')}/{header.get('dateYear')}"
+
+
 def summarize_audit(audit: dict) -> dict:
     header = audit.get('auditHeader') or {}
     info = audit.get('degreeInformation') or {}
     goals = info.get('goalArray') or []
     return {
         'student': header.get('studentName'),
-        'audit_date': header.get('dateYear') and f"{header.get('dateMonth')}/{header.get('dateDay')}/{header.get('dateYear')}",
+        'audit_date': audit_date(audit),
+        'url': AUDIT_URL,
+        'coverage': 'All course options from the returned audit are included. This is an existing audit snapshot; its date may precede recent changes.',
         'degree_percent_complete': _num(header.get('percentComplete')),
         'gpa': _num(header.get('studentSystemGpa')),
         'degrees': [{'degree': item.get('degreeLiteral'), 'level': item.get('studentLevelLiteral'),
@@ -549,6 +790,8 @@ def summarize_gpa(audit: dict) -> dict:
     for course in sorted((c for c in classes if not c['in_progress']), key=lambda c: c['term_code'] or ''):
         terms.setdefault(course['term'] or 'Unknown', []).append(course)
     return {
+        'audit_date': audit_date(audit),
+        'url': AUDIT_URL,
         'cumulative_gpa': reported if reported is not None else _gpa(classes),
         'major_gpa': _num(major.get('gpa')) if major else None,
         'credits_earned': _num(degrees[0].get('studentSystemCumulativeTotalCreditsEarned')),

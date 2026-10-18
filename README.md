@@ -6,7 +6,7 @@ assignment requirements, read Moodle Pages, and review your released grades.
 
 CourseLight is the simpler companion to
 [CourseSite-MCP](https://github.com/johnBrereton/CourseSite-MCP). It contains eight
-Moodle read tools, a Lehigh sign-in tool, eight read-only Lehigh Banner and Degree
+Moodle read tools, a Lehigh sign-in tool, eleven read-only Lehigh Banner and Degree
 Works tools, three read-only Gradescope tools, and five Python source files. It has no
 quiz-attempt access, question/answer tools, uploads, assignment submissions, or generic
 API tool, on Moodle or Gradescope. Complete assessments and submit your own work
@@ -34,6 +34,9 @@ At Lehigh, these read the registrar's systems through the same sign-in:
 | `search_classes` | Search or browse the class schedule by subject, number or number range, attribute (HU, SS, W, ...), or keyword: CRNs, times, rooms, instructors, seats, waitlists (no sign-in) |
 | `get_course_description` | Read a section's catalog description (no sign-in) |
 | `build_schedules` | Build conflict-free schedules from candidate courses, pairing lectures with their labs, with filters for open seats, times, days off, and credits (no sign-in) |
+| `get_section_requirements` | Read a section's reported prerequisites, corequisites, and restrictions, preserving AND/OR grouping and grade thresholds (no sign-in) |
+| `get_saved_plans` | Read existing Banner Plan Ahead plans, their preferred status, courses, sections, credits, and meeting times |
+| `get_registration_readiness` | Read Banner's registration-preparation messages, including reported holds and time-ticket windows; credit limits are explicitly unavailable |
 | `get_my_registration` | Read your registered classes for a term; past terms include grades |
 | `get_degree_audit` | Read your Degree Works audit: progress, advisors, met and unmet requirements |
 | `get_gpa` | Read cumulative and major GPA, credits, and GPA by term |
@@ -71,8 +74,10 @@ and build me some schedules for next semester, no Friday classes." The
 `plan_next_semester` prompt (in your client's prompt or `/` menu) walks through the
 same steps: read the audit, search next term for what you still need, ask your
 preferences, and build schedules. Schedules are suggestions: prerequisites,
-major restrictions, and registration holds aren't checked, so confirm with your
-advisor and register yourself in Banner.
+major restrictions, and registration holds aren't checked by the schedule
+builder itself. The planning prompt separately reads section requirements and
+registration readiness; confirm eligibility with your advisor and register
+yourself in Banner.
 
 Quiz titles and deadlines may appear in a course outline or calendar. CourseLight
 does not open quiz attempts, retrieve their questions, save answers, or submit
@@ -202,6 +207,29 @@ hosting account, database, or public listener.
   Images, embedded documents, layout, and diagrams are omitted; check the original.
 - Each response is capped at 20 MiB. Moodle reads use a 30-second request timeout
   and at most three attempts for temporary network or service failures.
+
+Banner and Degree Works responses include source links. Use the returned term and
+CRN when opening Banner class search; the link opens its term selector rather
+than a particular section. Saved plans cover Banner Plan Ahead only, not Degree
+Works planner plans. They are read without creating, modifying, deleting,
+approving, or changing the preferred plan. Planned courses are not necessarily
+registered. Missing meeting information is returned as `null` with a warning;
+check `complete` before treating the response as exhaustive.
+
+Section requirements are source text with table columns retained, including
+operators, grouping, and minimum grades. Missing fields and truncation are
+explicitly reported. A "no information available" response does not establish
+that a section has no requirements. Registration readiness reports Banner's
+individual allowed/blocked/informational checks and displayed registration
+windows; it does not determine eligibility. The preparation page does not expose
+credit limits, so `credit_limits` is `null` and listed in `unavailable`. Window
+times are left as Banner displays them, without an assumed timezone.
+
+Degree Works audit, GPA, and course-history reads include the audit date. They
+read an existing snapshot and do not request a new audit. All course options in
+the returned audit are included; options are no longer limited to 20 per rule.
+Unknown requirement progress is reported as unknown. Neither a degree audit nor
+a generated schedule guarantees eligibility to graduate or register.
 
 Tools return `{ "ok": true, "fetched_at": ..., "data": ... }` or
 `{ "ok": false, "error": { "code": ..., "message": ... } }`.
