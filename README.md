@@ -44,6 +44,7 @@ host. They return validated `structuredContent` and a short text fallback.
 | Tool | Purpose |
 | --- | --- |
 | `show_courses` | Show courses and weekly assignment deadlines |
+| `show_deadlines` | Show weekly assignment deadlines in a chronological timeline |
 | `show_coursework` | Explicit “coursework” / “course work” requests: add a riskier search for possible work in other course posts |
 | `show_class_schedule` | Show registered Banner classes in a Monday–Friday grid |
 | `show_schedule_options` | Compare potential schedules using the same grid |

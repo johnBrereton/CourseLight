@@ -19,6 +19,8 @@ visualizations/
     service.py                    Adds discovery to the assignment reader
     discovery.py                  Finds possible work in other course posts
     models.py                     Extends the result with heuristic candidates
+  deadlines/
+    resource.py                   Timeline tool; reuses Courses models and reader
   schedule/
     resource.py                   Registered and proposed schedule tools
     service.py                    Adapts the existing Banner readers
@@ -28,6 +30,7 @@ ui/
     courses/                      React components, CSS, HTML, and result adapter
       main.jsx                    React entry point
     coursework/                   Broader view, candidate rows, and risk notice
+    deadlines/                    Simple timeline, grouped by local due date
     schedule/                     One React view for both schedule tools
   shared/
     bridge.js                     MCP Apps host messaging
@@ -131,3 +134,17 @@ whose date ranges are shorter than one week (including one-off exams), weekend
 meetings, and TBA times remain in the result for chat and class details. They are
 not plotted in the weekday grid; unknown times are never placed at a guessed hour. Narrow hosts can scroll the five-day grid
 horizontally. Course details retain the original meeting dates and source CRNs.
+
+## Deadline timeline
+
+`show_deadlines(course_ids, timezone, week_start)` displays assignment deadlines
+in chronological order, grouped by local calendar date, with CourseSite links.
+It reuses `courses.get_courses`, `CoursesQuery`, and `CoursesView` (`courses.v1`),
+so there is no second assignment fetcher or duplicate deadline schema. Its
+resource is `ui://courselight/deadlines/v1.html`; React lives in `ui/views/deadlines/`
+and reuses the Courses host-result validator, shared bridge, and glass surfaces.
+
+Coverage is assignment-only. Unknown dates are not placed on the timeline, and
+submission/completion status is not inferred. The assistant states the selected
+week, timezone, and coverage in chat. The view handles no returned deadlines,
+failed loads, and courses that could not be read.
