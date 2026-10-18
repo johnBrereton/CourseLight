@@ -22,6 +22,7 @@ or submit work. Complete assessments directly in CourseSite or Gradescope.
 | `get_grades` | Read grades released to you for a course, from CourseSite and Gradescope together unless you ask for one |
 | `get_upcoming_work` | Read upcoming action events in a time interval, with pagination |
 | `read_page` | Read the text of a Moodle Page, with pagination |
+| `read_grading_policy` | Read syllabus grading rules from visible course syllabus resources |
 | `login` | Lehigh only: open a browser to sign in with SSO and Duo for CourseSite, Banner, and Degree Works |
 
 At Lehigh, these read the registrar's systems through the same sign-in:
@@ -82,6 +83,8 @@ host. They return validated `structuredContent` and a short text fallback.
 | --- | --- |
 | `show_courses` | Show courses and weekly assignment deadlines |
 | `show_deadlines` | Show weekly assignment deadlines in a chronological timeline |
+| `show_gradebook` | Show CourseSite and Gradescope scores in a compact grade grid |
+| `show_grade_target` | Explore a syllabus-backed target grade with draggable score bars |
 | `show_study_materials` | Expand selected study topics into course materials and download links |
 | `show_coursework` | Explicit “coursework” / “course work” requests: add a riskier search for possible work in other course posts |
 | `show_class_schedule` | Show registered Banner classes in a Monday–Friday grid |
@@ -172,7 +175,9 @@ Banner, and Degree Works sites, and are never returned in tool results. Gradesco
 cookies are sent only to `www.gradescope.com`, used only for page reads, and are
 never returned in tool results.
 
-There are no local journals, staged submissions, or downloaded course files. The
+There are no local journals, staged submissions, or saved course files. The syllabus
+reader extracts bounded PDF content in memory and may read public Google Docs
+linked as syllabi; it never sends Moodle credentials to those external links. The
 only application data is the Lehigh and Gradescope sign-in sessions in
 `~/.lehigh-mcp/`, outside the repository. `.env`, virtual environments, local MCP configuration,
 and logs are ignored by Git. The default stdio connection needs no tunnel key,

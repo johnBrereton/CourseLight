@@ -176,7 +176,7 @@ def get_course_contents(course_id: PositiveID, section_id: Offset | None = None)
     """Read course sections, activity descriptions, and resource links; never open quiz attempts.
 
     Use module.instance as a Moodle Page's page_id, and module.id as its course-module ID.
-    File links are opened by the user in Moodle; this server does not download files.
+    File links are for the user to open in Moodle. Use read_grading_policy for syllabus text.
     """
     params = {'courseid': course_id}
     if section_id is not None:
@@ -548,7 +548,7 @@ def plan_next_semester(term: str = '', preferences: str = '') -> str:
 """
 
 
-register_visualizations(mcp, get_client=client, clean=clean)
+register_visualizations(mcp, get_client=client, clean=clean, read_grades=get_grades)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,22 @@
+@import "../../shared/grades/grades.css";
+
+.grade-reported { display: grid; text-align: right; flex-shrink: 0; }
+.grade-reported strong { font-size: 22px; font-weight: 500; }
+.grade-reported small { color: var(--muted); font-size: 10px; }
+.grade-sites { display: inline-flex; border: 1px solid var(--line); padding: 3px; border-radius: 9px; gap: 3px; margin-bottom: 16px; }
+.grade-sites button { color: inherit; font: inherit; font-size: 12px; cursor: pointer; background: transparent; border: 0; padding: 5px 12px; border-radius: 6px; }
+.grade-sites button[aria-pressed="true"] { background: light-dark(rgb(0 0 0 / .06), rgb(255 255 255 / .12)); }
+.grade-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin: 0; padding: 0; list-style: none; }
+.grade-tile { min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: light-dark(rgb(255 255 255 / .18), rgb(255 255 255 / .025)); }
+.grade-tile a { display: grid; grid-template-rows: 1fr auto auto; min-height: 132px; height: 100%; padding: 14px; }
+.grade-tile a:hover { text-decoration: none; background: light-dark(rgb(0 0 0 / .025), rgb(255 255 255 / .04)); border-radius: inherit; }
+.grade-tile-name { font-size: 12px; line-height: 1.4; margin-bottom: 15px; overflow-wrap: anywhere; }
+.grade-tile strong { font-size: 25px; line-height: 1.2; font-weight: 500; letter-spacing: -.6px; font-variant-numeric: tabular-nums; }
+.grade-tile small { margin-top: 4px; font-size: 10px; color: var(--muted); }
+.grade-tile.is-ungraded strong { color: var(--muted); font-weight: 400; }
+.grade-grid-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; font-size: 11px; color: var(--muted); }
+.grade-categories { margin: 0; }
+.grade-categories > div { display: flex; justify-content: space-between; gap: 20px; padding: 7px 0; }
+.grade-categories dd { margin: 0; }
+@media (max-width: 540px) { .grade-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 340px) { .grade-tile a { padding: 11px; } .grade-tile strong { font-size: 22px; } }

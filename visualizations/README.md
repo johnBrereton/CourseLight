@@ -23,6 +23,15 @@ visualizations/
     resource.py                   Exam-prep material selection tool
     service.py                    Reads real modules and browser file links
     models.py                     Topic selections and material groups
+  gradebook/
+    resource.py                   Gradebook tool and syllabus reader
+    service.py                    Adapts the shared two-site grade reader
+    syllabus.py                   Visible syllabus sources and bounded extraction
+    models.py                     Source grade rows
+  grade_target/
+    resource.py                   Separate grade-target tool and resource
+    service.py                    Verifies syllabus evidence and grade references
+    models.py                     Fixed-weight scenario inputs and result
   deadlines/
     resource.py                   Timeline tool; reuses Courses models and reader
   schedule/
@@ -36,11 +45,14 @@ ui/
     coursework/                   Broader view, candidate rows, and risk notice
     deadlines/                    Simple timeline, grouped by local due date
     materials/                    Expandable topic bars and download links
+    gradebook/                    Compact source grade grid
+    grade_target/                 Draggable score bars and projected final grade
     schedule/                     One React view for both schedule tools
   shared/
     bridge.js                     MCP Apps host messaging
     components/                   Glass surfaces, CourseLight mark, and header
     schedule/                     Reusable weekly grid, layout, and class details
+    grades/                       Shared grade shell, formatting, and result validation
     styles/                       Common theme tokens and branding styles
     assets/                       Logos, icons, and licenses
   dist/
@@ -169,5 +181,67 @@ folders, pages, URLs, and books. Quizzes and submissions are excluded. File rows
 have Download links; other resources open their CourseSite source. Download URLs
 use Moodle's browser `pluginfile.php` endpoint and `forcedownload=1`, with no web
 service token. A CourseSite browser sign-in is required. See [Moodle file handling](https://moodledev.io/docs/4.5/apis/subsystems/external/files).
-The server does not fetch, cache, or bundle file contents, and there is no ZIP or
+The study-materials tool does not fetch, cache, or bundle file contents, and there is no ZIP or
 "download all" action. All expansion state is local to the React view.
+
+
+## Gradebook
+
+`show_gradebook(course_id, gradescope_course_id?)` renders
+`ui://courselight/gradebook/v1.html` with `gradebook.v1`. It calls the same guarded
+`get_grades` reader as the text tool through an injected callback, retaining both
+CourseSite and Gradescope results and their source failures. The source switch is
+local state. No combined total is invented: a CourseSite course total is labeled
+as reported, and a mirrored Gradescope grade is not automatically added to it.
+Unavailable scores remain unknown, including submitted work without a score.
+Hidden grades are not displayed; category totals stay separate from assessments.
+
+## Grade target
+
+`show_grade_target(course_id, gradescope_course_id?, grading_plan?, target=90)`
+renders the separate `ui://courselight/grade_target/v1.html` resource with
+`grade_target.v1`. It reuses the grade reader and adds a syllabus-backed scenario.
+Plain grade requests use the grid; target-grade and what-if requests use this tool.
+Each remaining assessment or unfinished category becomes a vertical score bar.
+Dragging a bar or using its arrow keys updates the projected final grade locally.
+Syllabus details and assumptions expand below the chart.
+
+First call `read_grading_policy(course_id)` and `get_grades`.
+The syllabus reader discovers visible syllabus/grading-policy modules in the
+selected enrolled course. It supports Moodle Pages, one PDF in a syllabus resource,
+and public Google Docs linked as syllabi. Other formats or sign-in-protected Docs
+return a source link and an unavailable notice. It accepts module IDs, not arbitrary
+URLs. The existing Moodle API allowlist is unchanged.
+
+PDF reads use the configured Moodle host's `webservice/pluginfile.php` endpoint,
+with no redirects. The token stays server-side. PDF extraction runs in a separate
+process with a 15-second timeout, 10 CPU seconds on POSIX, 5 MB file/content limits,
+30 pages, and 60,000 characters; Linux also caps address space. Nothing is saved.
+Scanned PDFs require manual review. See [Moodle file handling](https://moodledev.io/docs/4.5/apis/subsystems/external/files)
+and [pypdf text extraction](https://pypdf.readthedocs.io/en/stable/user/extract-text.html).
+
+The assistant interprets the complete syllabus and supplies `grading_plan`:
+
+- `syllabus_module_id`, an exact `evidence` passage, and a brief `explanation`.
+- `work`: distinct rows with final-course `weight` percentages summing to 100.
+  An optional `grade_ref` uses `coursesite:<grade item id>` or
+  `gradescope:<assignment id from its URL>`. Scores are re-read, never supplied.
+- `assumptions`: visible conditions, such as excluding discretionary extras or
+  treating an unfinished homework category as an adjustable final average.
+
+The server verifies the source passage, weights, and grade references. This
+checks provenance and arithmetic structure, **not the assistant's interpretation**
+of a syllabus. Never infer missing weights, assignment counts, or letter cutoffs.
+Use one source per assessment; totals, stale/excluded scores, and percentages
+outside 0–100 cannot be used as released assessment scores in the projection.
+A full unfinished category can remain unknown; do not treat its current average
+as a final score. Unsupported variable weights, curves, or drop/replacement rules
+should leave projections unavailable unless the scenario explicitly excludes an
+additive discretionary adjustment and states that condition.
+
+The React calculator uses `secured = sum(weight * released_percent / 100)` and
+`needed = (target - secured) / unresolved_weight * 100`. It handles targets already
+covered, targets above the possible maximum, and no unresolved work. Required
+percentages round upward to a tenth. Per-item sliders answer what is needed on one
+item while holding the other estimates fixed. The default 90% target is a scenario,
+not a letter grade. Changes are local and reset when a new tool result arrives.
