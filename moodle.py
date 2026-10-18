@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import re
 import time
-from urllib.parse import unquote_plus, urlsplit, urlunsplit
+from urllib.parse import unquote, unquote_plus, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 import httpx
@@ -18,8 +18,9 @@ ENV_PATH = Path(__file__).resolve().parent / '.env'
 EXTERNAL_KEYS = frozenset(key for key in ('MOODLE_URL', 'MOODLE_TOKEN') if os.environ.get(key))
 load_dotenv(ENV_PATH, override=False, interpolate=False)
 
-# This is the complete upstream API surface. There are no assessment, upload,
+# This is the complete Moodle RPC allowlist. There are no assessment, upload,
 # submission, or generic API tools, even when a token permits those operations.
+# course_file separately permits only listed Resource/Folder file downloads.
 READ_FUNCTIONS = frozenset({
     'core_webservice_get_site_info',
     'core_enrol_get_users_courses',
@@ -36,6 +37,7 @@ SECRET_KEYS = frozenset({
     'sesskey', 'debug', 'debuginfo', 'stacktrace',
 })
 MAX_RESPONSE_BYTES = 20 * 1024 * 1024
+MAX_FILE_BYTES = 10 * 1024 * 1024
 
 
 class MoodleError(Exception):
@@ -160,3 +162,58 @@ class Moodle:
                 raise MoodleError('invalid_response', 'Moodle did not identify the connected user.')
             self._identity = info
         return self._identity
+
+    def course_file(self, course_id: int, module_id: int, file_index: int) -> tuple[dict, bytes]:
+        """Download one listed Resource/Folder file, never a caller-supplied URL or assessment file."""
+        sections = self.call('core_course_get_contents', courseid=course_id)
+        module = next((module for section in sections for module in section.get('modules', [])
+                       if module.get('id') == module_id), None)
+        if not module or module.get('modname') not in {'resource', 'folder'} or module.get('uservisible') is False:
+            raise MoodleError('file_unavailable', 'Select an accessible Resource or Folder module from get_course_contents.')
+        contents = module.get('contents') or []
+        if file_index < 0 or file_index >= len(contents):
+            raise MoodleError('file_unavailable', 'file_index must select an entry in this module\'s contents list.')
+        item = contents[file_index]
+        if item.get('type') != 'file' or item.get('isexternalfile'):
+            raise MoodleError('file_unavailable', 'Only files stored in this Moodle Resource or Folder can be read.')
+        filename = item.get('filename') or ''
+        suffix = Path(filename).suffix.lower()
+        if suffix not in {'.pdf', '.docx', '.txt', '.md'}:
+            raise MoodleError('unsupported_file', 'Supported course files are PDF, DOCX, TXT, and Markdown. Open other formats in Moodle.')
+        if (item.get('filesize') or 0) > MAX_FILE_BYTES:
+            raise MoodleError('file_too_large', 'Course files must be at most 10 MiB.')
+        try:
+            base, target = urlsplit(self.url), urlsplit(item.get('fileurl') or '')
+            prefix = base.path.rstrip('/') + '/webservice/pluginfile.php/'
+            path = unquote(target.path)
+            allowed = (target.scheme == 'https' and target.hostname == base.hostname
+                       and (target.port or 443) == (base.port or 443)
+                       and not target.username and not target.password and not target.fragment
+                       and path.startswith(prefix) and '\\' not in path and '\x00' not in path
+                       and not re.search(r'%(?:2e|2f|5c|00)', path, re.I)
+                       and not any(part in {'.', '..'} for part in path.split('/'))
+                       and re.fullmatch(r'\d+/mod_' + module['modname'] + r'/content/[^?\x00]+', path[len(prefix):]))
+        except ValueError:
+            allowed = False
+        if not allowed:
+            raise MoodleError('file_unavailable', 'Moodle did not provide a supported file URL on the configured site.')
+        # Only this fixed file endpoint receives the token. Discard upstream query
+        # parameters and never follow a redirect carrying credentials elsewhere.
+        url = urlunsplit((target.scheme, target.netloc, target.path, '', ''))
+        try:
+            with self.http.stream('GET', url, params={'token': self.token, 'forcedownload': 1},
+                                  headers={'Accept': 'application/octet-stream'}) as response:
+                if response.status_code != 200:
+                    raise MoodleError('file_unavailable', 'Moodle could not serve this file. Check file access and whether the service allows file downloads.')
+                payload = bytearray()
+                for chunk in response.iter_bytes(chunk_size=65536):
+                    if len(payload) + len(chunk) > MAX_FILE_BYTES:
+                        raise MoodleError('file_too_large', 'Course files must be at most 10 MiB.')
+                    payload.extend(chunk)
+                if response.headers.get('content-type', '').split(';')[0] in {'application/json', 'text/html'}:
+                    raise MoodleError('file_unavailable', 'Moodle returned a login page or error instead of the file. Check sign-in and file-download permission.')
+        except httpx.HTTPError:
+            raise MoodleError('network_error', 'Could not download the course file from Moodle.') from None
+        return {'filename': filename, 'format': suffix[1:], 'bytes_downloaded': len(payload),
+                'timemodified': item.get('timemodified'), 'module_name': module.get('name'),
+                'url': f"{self.url}/mod/{module['modname']}/view.php?id={module_id}"}, bytes(payload)

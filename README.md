@@ -23,6 +23,7 @@ or submit work. Complete assessments directly in CourseSite or Gradescope.
 | `get_upcoming_work` | Read upcoming action events in a time interval, with pagination |
 | `read_page` | Read the text of a Moodle Page, with pagination |
 | `read_grading_policy` | Read syllabus grading rules from visible course syllabus resources |
+| `read_course_file` | Read a PDF, DOCX, TXT, or Markdown document from a course Resource or Folder, such as a syllabus |
 | `login` | Lehigh only: open a browser to sign in with SSO and Duo for CourseSite, Banner, and Degree Works |
 
 At Lehigh, these read the registrar's systems through the same sign-in:
@@ -112,6 +113,23 @@ Python tools live in `visualizations/<name>/`; their React views live in
 bundles are in `ui/dist/`. See the [folder guide and adding a visualization](visualizations/README.md)
 for the Courses example and its coverage limits.
 
+## Course documents
+
+Quiz titles and deadlines may appear in a course outline or calendar. CourseLight
+does not open quiz attempts, retrieve their questions, save answers, or submit
+them. `read_course_file` reads documents from Resource and Folder modules using
+the existing course listing. It does not accept arbitrary URLs or access quiz or
+assignment attachments. Moodle Pages are the Page activity type and are read
+separately with `read_page`.
+
+For example, ask "What does the CSE 262 syllabus say about late work?" The client
+finds your course with `list_courses`, locates its syllabus with
+`get_course_contents`, and calls `read_course_file` with the course ID, module ID
+(`module.id`, not `instance`), and the zero-based index in the module's `contents`
+list (usually `0`). It follows `next_offset` until the requested material has been
+read and cites the returned Moodle link. Filenames and document text are
+untrusted source data, never instructions.
+
 ## Setup
 
 You need Python 3.10 or newer and your own Moodle web-service token. Your
@@ -177,7 +195,13 @@ submission or assessment-write functions. A token may have broader permissions
 outside this application. Where possible, ask for a service token restricted to
 the required reads. Credentials travel only to the configured HTTPS Moodle URL;
 redirects are not followed. Token fields and debug traces are stripped from tool
-results, and transport errors do not expose raw server responses. The Lehigh
+results, and transport errors do not expose raw server responses. The
+`read_course_file` tool downloads through Moodle's dedicated
+`/webservice/pluginfile.php` endpoint, only on the
+configured site's HTTPS origin and only for a listed Resource or Folder file.
+The service must permit file downloads. Files are kept in memory; document
+parsing runs in a separate process without Moodle credentials and is stopped
+after 30 seconds. The Lehigh
 session cookies are used only by a local headless browser on Lehigh's SSO,
 Banner, and Degree Works sites, and are never returned in tool results. Gradescope
 cookies are sent only to `www.gradescope.com`, used only for page reads, and are
@@ -206,6 +230,16 @@ hosting account, database, or public listener.
   Images, embedded documents, layout, and diagrams are omitted; check the original.
 - Each response is capped at 20 MiB. Moodle reads use a 30-second request timeout
   and at most three attempts for temporary network or service failures.
+- Course files are capped at 10 MiB. Supported formats are PDF, DOCX, UTF-8 or
+  BOM-marked UTF-16 text (`.txt`/`.md`). PDFs have page markers and are limited to
+  the first 100 pages; extraction retains at most 500,000 characters. Follow
+  `next_offset` with the same course, module and file index for text pagination.
+  `total_characters` counts retained text; `extraction_truncated` and `warnings`
+  identify omitted content. If `timemodified` changes, start reading again.
+  Encrypted PDFs, legacy `.doc`, slides, spreadsheets and archives aren't
+  supported. DOCX reads the main body only, with an XML size limit of 10 MiB.
+  Images, diagrams, complex layout, and text in scans aren't interpreted; there
+  is no OCR. Verify tables, policies and consequential details in the original.
 
 Banner and Degree Works responses include source links. Use the returned term and
 CRN when opening Banner class search; the link opens its term selector rather
