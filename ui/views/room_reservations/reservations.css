@@ -1,0 +1,46 @@
+@import "../../shared/styles/base.css";
+
+.reservations-panel { max-width: 760px; margin: auto; padding: 12px 8px; }
+.reservations-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 18px; }
+.reservations-toolbar h2 { margin: 0; font-size: 15px; font-weight: 500; letter-spacing: -.2px; }
+.reservations-controls { display: flex; align-items: center; gap: 12px; }
+.reservations-controls label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.reservations-controls input { accent-color: light-dark(#765a2c, #cfb379); margin: 0; width: 14px; height: 14px; }
+.reservations-controls button, .reservations-pagination button { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--text); padding: 7px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.reservations-panel button:disabled { opacity: .4; cursor: default; }
+.reservations-groups { display: grid; gap: 22px; }
+.reservation-date { margin: 0 0 9px 4px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.reservations-list { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.reservation-card { position: relative; overflow: hidden; border-radius: 17px; border: 1px solid var(--glass-edge); box-shadow: 0 3px 14px var(--glass-shadow), 0 0 0 1px var(--glass-rim); }
+.reservation-material { position: absolute; inset: 0; border: 0; border-radius: inherit; pointer-events: none; }
+.reservation-card summary { position: relative; display: flex; align-items: center; gap: 14px; padding: 20px; cursor: pointer; list-style: none; }
+.reservation-card summary::-webkit-details-marker { display: none; }
+.reservation-card summary:focus-visible { outline-offset: -3px; border-radius: inherit; }
+.reservation-info { display: grid; gap: 5px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.reservation-info strong { font-size: 15px; font-weight: 500; }
+.reservation-info > span { font-size: 12px; color: var(--muted); }
+.reservation-status { font-size: 11px; padding: 4px 9px; border-radius: 20px; background: var(--warning-bg); color: var(--muted); }
+.reservation-status.confirmed { background: light-dark(#edf4ee, #b5e1bc12); color: light-dark(#356044, #b7d9bc); }
+.reservation-status.cancelled { color: var(--muted); }
+.reservation-status.pending { background: light-dark(#f8f1df, #dbba6214); color: light-dark(#795b19, #e0c88e); }
+.reservation-chevron { flex-shrink: 0; color: var(--muted); transition: transform .18s; }
+.reservation-card details[open] .reservation-chevron { transform: rotate(180deg); }
+.reservation-details { position: relative; margin: 0 20px; padding: 14px 0 18px; border-top: 1px solid var(--line); font-size: 12px; }
+.reservation-details dl { margin: 0 0 14px; display: grid; gap: 7px; }
+.reservation-details dl div { display: flex; justify-content: space-between; gap: 20px; }
+.reservation-details dt { color: var(--muted); }
+.reservation-details dd { margin: 0; overflow-wrap: anywhere; text-align: right; }
+.reservations-message { padding: 20px; border: 1px solid var(--line); border-radius: 16px; color: var(--muted); font-size: 12px; }
+.reservations-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; font-size: 11px; color: var(--muted); }
+.reservations-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 460px) {
+  .reservations-toolbar { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .reservations-controls { align-self: stretch; justify-content: space-between; }
+  .reservation-card summary { padding: 16px 14px; gap: 9px; flex-wrap: wrap; }
+  .reservation-info { flex-basis: calc(100% - 30px); }
+  .reservation-chevron { order: 1; }
+  .reservation-status { order: 2; }
+  .reservation-details { margin: 0 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .reservation-chevron { transition: none; } }
+@media (forced-colors: active) { .reservation-card { border-color: CanvasText; box-shadow: none; } .reservation-status { border: 1px solid CanvasText; } }

@@ -119,6 +119,7 @@ host. They return validated `structuredContent` and a short text fallback.
 | `show_course_map` | Show course-building pins with course visibility toggles |
 | `show_study_rooms` | Find available 25Live rooms on a map, then review and explicitly reserve one |
 | `show_study_room` | Read a reservation's current status and show its building |
+| `show_room_reservations` | List your 25Live reservations with expandable references, pagination, and a cancelled-events filter |
 | `show_schedule_options` | Compare potential schedules using the same grid |
 
 Ordinary assignment requests use `show_courses`. The broader tool uses keyword

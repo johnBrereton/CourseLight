@@ -291,3 +291,13 @@ an exact review, and submits only after **Reserve room**. App-only tools handle
 the review, confirmation, and status checks. `show_study_room(event_id)` reads an
 existing booking. See the [room flow](study_rooms/README.md) for the contract and
 recovery behavior.
+
+`show_room_reservations(from_date=None, include_cancelled=False, page=1,
+max_results=25)` wraps the same own-events reader as `list_my_events`. Its
+`room_reservations.v1` result renders `ui://courselight/room_reservations/v1.html`.
+The list groups reservations by first-start date, preserves 25Live's status,
+and expands to show the provider reference and event ID. The cancelled filter,
+refresh button, and pagination call the same read-only tool through the host.
+End times are not provided by this listing endpoint; the cards only label starts.
+Provider page counts include cancelled events, so an empty filtered page can
+still have a next page. No booking or cancellation actions are added here.
