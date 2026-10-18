@@ -433,6 +433,51 @@ def book_room(space_id: int, start: str, end: str, event_name: str, confirm: boo
                                            'Check it in 25Live before relying on it.'}
 
 
+def _names(cell) -> list[str]:
+    """Names inside a list cell: a plain string, an item, or a list of subjects."""
+    if isinstance(cell, dict):
+        items = _list(cell.get('subject')) or ([cell] if cell.get('itemName') else [])
+        return [_clean(item.get('itemName'), 80) for item in items]
+    return [_clean(cell, 80)] if cell else []
+
+
+def list_events(from_date: str | None, include_cancelled: bool, page: int, page_size: int) -> dict:
+    """The user's own events (as requestor or scheduler) ending on or after a date, soonest first."""
+    after = from_date or datetime.now(TIMEZONE).strftime('%Y-%m-%d')
+    with _client() as client:
+        data = _checked(_send(client, 'GET', '/list/listdata.json', params={
+            'compsubject': 'event', 'node_type': 'E', 'end_after': f'{after}T00:00:00', 'sort': 'start_date',
+            'order': 'asc', 'page': page, 'page_size': page_size, 'obj_cache_accl': 0, 'role_id': -1,
+            'caller': 'pro-ListService.getData'}))
+    rows = _list((data or {}).get('rows'))
+    columns = [column.get('prefname') or column.get('name') for column in _list((data or {}).get('cols'))]
+    events, hidden = [], 0
+    for row in rows:
+        cells = dict(zip(columns, _list(row.get('row'))))
+        state = _clean(cells.get('state_name'), 30)
+        if state == 'Cancelled' and not include_cancelled:
+            hidden += 1
+            continue
+        favorite = cells.get('IsFav')
+        events.append({
+            'event_id': row.get('contextId'), 'name': next(iter(_names(cells.get('event_name'))), None),
+            'title': _clean(cells.get('event_title'), 100) or None, 'locator': _clean(cells.get('event_locator'), 30) or None,
+            'status': state or None, 'start': _clean(cells.get('start_date'), 23).replace(' ', 'T')[:19] or None,
+            'rooms': _names(cells.get('locations')) or None,
+            'organizations': _names(cells.get('organization')) or None,
+            'type': _clean(cells.get('event_type_name'), 40) or None,
+            'role': _clean(cells.get('role'), 40) or None,
+            'favorite': bool(favorite.get('isFav')) if isinstance(favorite, dict) else None,
+            'repeats': _clean(cells.get('meeting_pattern'), 20) or None})
+    head = rows[0] if rows else {}
+    return {'events': events, 'page': page, 'pages': head.get('pages', 1 if rows else 0),
+            'total': head.get('count', len(rows)), 'from_date': after, 'cancelled_hidden': hidden or None,
+            'timezone': 'America/New_York', 'url': APP_URL,
+            'note': ('Events where you are the requestor or scheduler, soonest first. Start is the first '
+                     'occurrence in Lehigh local time; end times are not listed. Counts include cancelled events. '
+                     'Follow pages with the same from_date until page reaches pages.')}
+
+
 def _favorite(client: httpx.Client, event_id: str):
     _send(client, 'PUT', '/favorites.json', params={
         'object_type': 1, 'object_id': event_id, 'caller': 'pro-FavoriteService.add'})
