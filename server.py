@@ -122,7 +122,7 @@ def guarded(function):
                 data = function(*args, **kwargs)
             except MoodleError as exc:
                 # Before asking the user to sign in, pick up a token another session saved.
-                if exc.code not in SIGN_IN_ERRORS or function.__name__ == 'login' or not reset_client():
+                if exc.code not in SIGN_IN_ERRORS or function.__name__ in {'login', 'book_room', 'cancel_room_booking', 'favorite_room_booking'} or not reset_client():
                     raise
                 data = function(*args, **kwargs)
             return {'ok': True, 'fetched_at': int(time.time()), 'data': clean(data)}
@@ -644,7 +644,9 @@ def book_room(space_id: PositiveID, start: LocalTime, end: LocalTime,
     new event. The result is read back from 25Live: report booked=false or any message as it is.
     Bookings appear under the user's name at Lehigh, so never book on a guess or for several rooms at once.
     """
-    return twentyfivelive.book_room(space_id, start, end, event_name, confirm, favorite)
+    result = twentyfivelive.book_room(space_id, start, end, event_name, confirm, favorite)
+    result.pop('_account_id', None)
+    return result
 
 
 @mcp.tool(annotations=FAVORITE)

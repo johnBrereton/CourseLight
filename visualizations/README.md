@@ -285,7 +285,9 @@ delivered only in component metadata, never in model-facing data or built files.
 Feature code lives in `course_map/` and `ui/views/course_map/`; shared provider
 configuration is in `maps/` and shared React map rendering in `ui/shared/maps/`.
 
-`study_rooms/` and `ui/views/study_rooms/` scaffold the 25Live reservation view
-using that same map. Only the UI resource is registered today. No reservation tool
-or booking action is exposed until the real API reader is connected. See the
-[25Live adapter handoff](study_rooms/README.md) for the status and location contract.
+`show_study_rooms(start, end, query=None, min_capacity=0)` uses Evan's 25Live
+reader and the same map for a room picker. The card checks availability, presents
+an exact review, and submits only after **Reserve room**. App-only tools handle
+the review, confirmation, and status checks. `show_study_room(event_id)` reads an
+existing booking. See the [room flow](study_rooms/README.md) for the contract and
+recovery behavior.

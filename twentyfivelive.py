@@ -304,28 +304,73 @@ def _my_event(client: httpx.Client, event_id: str, include: str = 'customers+res
         'event_id': event_id, 'scope': 'extended', 'include': include}},
         params={'request_method': 'get', 'caller': 'pro-EventService.getEventsInclude'})
     events = _list((_checked(data) or {}).get('events', {}).get('event'))
-    if not events:
+    if not events or str(events[0].get('event_id')) != event_id:
         raise TwentyFiveLiveError('event_not_found', 'No 25Live event with that ID is visible to the signed-in account.')
     return events[0]
 
 
 def _mine(event: dict, contact: int) -> bool:
-    return any(_find(role, 'contact_id') == contact for role in _list(event.get('role')))
+    return any(str(_find(role, 'contact_id')) == str(contact) for role in _list(event.get('role')))
 
 
 def _summary(event: dict) -> dict:
     profile = _list(event.get('profile'))
-    rooms = []
+    rooms, details = [], []
     for item in profile:
         for reservation in _list(item.get('reservation')):
             for space in _list(reservation.get('space_reservation')):
-                rooms.append(space.get('space', {}).get('space_name') or space.get('space_id'))
+                location = space.get('space') or {}
+                space_id = space.get('space_id') or location.get('space_id')
+                name = location.get('space_name') or space_id
+                rooms.append(name)
+                details.append({'space_id': space_id, 'name': _clean(name, 80),
+                                'start': reservation.get('reservation_start_dt'),
+                                'end': reservation.get('reservation_end_dt'),
+                                'reservation_state': reservation.get('reservation_state')})
     return {'event_id': event.get('event_id'), 'name': _clean(event.get('event_name'), 100),
             'status': _clean(event.get('state_name'), 30) or None, 'locator': event.get('event_locator'),
+            'state': event.get('state'), 'room_details': details,
             'rooms': [_clean(room, 40) for room in rooms] or None, 'url': APP_URL}
 
 
-def book_room(space_id: int, start: str, end: str, event_name: str, confirm: bool, favorite: bool) -> dict:
+def _booking(client: httpx.Client, event: dict) -> dict:
+    summary = _summary(event)
+    ids = [int(room['space_id']) for room in summary['room_details']
+           if str(room['space_id']).isdigit() and int(room['space_id']) > 0]
+    try:
+        buildings = _buildings(client, ids) if ids else {}
+    except TwentyFiveLiveError:
+        buildings = {}  # Missing map metadata must not hide a successful reservation.
+    for room in summary['room_details']:
+        room['building'] = buildings.get(int(room['space_id'])) if str(room['space_id']).isdigit() else None
+    return summary
+
+
+def get_booking(event_id: str) -> dict:
+    if not EVENT_ID.fullmatch(event_id):
+        raise TwentyFiveLiveError('invalid_event', 'Give the numeric event ID returned by book_room.')
+    with _client() as client:
+        event = _my_event(client, event_id)
+        if not _mine(event, _contact_id(client)):
+            raise TwentyFiveLiveError('not_your_booking', 'Only bookings you requested can be shown here.')
+        return _booking(client, event)
+
+
+def _matches_booking(summary: dict, space_id: int, start: str, end: str) -> bool:
+    def instant(value):
+        parsed = datetime.fromisoformat(value)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=TIMEZONE)
+    try:
+        return str(summary['state']) == str(CONFIRMED) and any(
+            str(room['space_id']) == str(space_id) and str(room['reservation_state']) == '1'
+            and instant(room['start']) == instant(start) and instant(room['end']) == instant(end)
+            for room in summary['room_details'])
+    except (ValueError, TypeError, KeyError):
+        return False
+
+
+def book_room(space_id: int, start: str, end: str, event_name: str, confirm: bool, favorite: bool,
+              *, expected_contact: int | None = None) -> dict:
     start, end = _window(start, end)
     _not_past(start)
     name = _clean(event_name, 100)
@@ -338,33 +383,43 @@ def book_room(space_id: int, start: str, end: str, event_name: str, confirm: boo
         row = _availability(client, [space_id], start, end).get(space_id)
         room = {'space_id': space_id, 'name': _clean(listed['itemName'], 40),
                 'description': _clean(listed['itemDesc'].split(' -- ')[0], 120),
-                'start': start, 'end': end, 'timezone': 'America/New_York', 'event_name': name}
+                'start': start, 'end': end, 'timezone': 'America/New_York', 'event_name': name,
+                'building': _buildings(client, [space_id]).get(space_id),
+                'capacity': (row or {}).get('max_capacity') or 0}
         if not _is_free(row):
             raise TwentyFiveLiveError('room_unavailable', f'{room["name"]} is not free for that time. Use search_rooms.')
         if not confirm:
-            return {'booked': False, 'preview': room,
+            return {'booked': False, 'preview': room, '_account_id': _contact_id(client),
                     'message': 'Nothing was booked. Show the user this room and time, and call book_room again with '
                                'confirm=true only after they approve it.'}
         contact = _contact_id(client)
-        data = _send(client, 'POST', '/events.json', {'events': {'event': {
-            'status': 'new', '_source': 'direct_sched_event_xml.html', 'event_id': '', 'parent_id': 0,
-            'event_name': name, 'alien_uid': f'Express_Pro{int(time.time() * 1000)}', 'event_type_id': MEETING,
-            'state': CONFIRMED, 'primary': 'T',
-            'profile': {'status': 'new', 'rec_type_id': 0, 'init_start_dt': start, 'init_end_dt': end,
-                        'reservation': [{'status': 'new', 'reservation_id': '', 'reservation_state': 1,
-                                         'reservation_start_dt': start, 'reservation_end_dt': end,
-                                         'space_reservation': [{'status': 'new', 'space_id': space_id}]}]},
-            'role': [{'status': 'new', 'role_id': -2, 'contact': {'status': 'new', 'contact_id': contact}},
-                     {'status': 'new', 'role_id': -1, 'contact': {'status': 'new', 'contact_id': contact}}]}}},
-            params={'return_doc': 'T', 'caller': 'pro-EventService.postEvent'})
-        created = _list((_checked(data) or {}).get('events', {}).get('event'))
-        if not created:
-            raise TwentyFiveLiveError('booking_not_confirmed', '25Live did not return the new booking. '
-                                      'Check 25Live before trying again.')
-        # Read the booking back; only report it as made once 25Live shows it.
-        event = _my_event(client, str(created[0]['event_id']))
-        summary = _summary(event)
-        booked = event.get('state') == CONFIRMED and bool(summary['rooms'])
+        if expected_contact is not None and contact != expected_contact:
+            raise TwentyFiveLiveError('account_changed', 'The signed-in account changed. Review the booking again.')
+        event_id = None
+        try:
+            data = _send(client, 'POST', '/events.json', {'events': {'event': {
+                'status': 'new', '_source': 'direct_sched_event_xml.html', 'event_id': '', 'parent_id': 0,
+                'event_name': name, 'alien_uid': f'Express_Pro{int(time.time() * 1000)}', 'event_type_id': MEETING,
+                'state': CONFIRMED, 'primary': 'T',
+                'profile': {'status': 'new', 'rec_type_id': 0, 'init_start_dt': start, 'init_end_dt': end,
+                            'reservation': [{'status': 'new', 'reservation_id': '', 'reservation_state': 1,
+                                             'reservation_start_dt': start, 'reservation_end_dt': end,
+                                             'space_reservation': [{'status': 'new', 'space_id': space_id}]}]},
+                'role': [{'status': 'new', 'role_id': -2, 'contact': {'status': 'new', 'contact_id': contact}},
+                         {'status': 'new', 'role_id': -1, 'contact': {'status': 'new', 'contact_id': contact}}]}}},
+                params={'return_doc': 'T', 'caller': 'pro-EventService.postEvent'})
+            created = _list((_checked(data) or {}).get('events', {}).get('event'))
+            if not created or not EVENT_ID.fullmatch(str(created[0].get('event_id', ''))):
+                raise _unavailable()
+            event_id = str(created[0]['event_id'])
+            event = _my_event(client, event_id)
+            summary = _booking(client, event)
+            booked = _mine(event, contact) and _matches_booking(summary, space_id, start, end)
+        except Exception:
+            # The POST may have succeeded. Never replay it after an uncertain response.
+            return {'booked': False, 'outcome': 'unknown', 'event_id': event_id, 'preview': room,
+                    'message': 'The booking outcome could not be verified. Check 25Live before making another request.',
+                    'url': APP_URL}
         favorited = False
         if booked and favorite:
             try:

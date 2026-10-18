@@ -1,28 +1,43 @@
-# 25Live adapter handoff
+# Study rooms
 
-This is a scaffold. The HTML resource is registered, but no reservation tool is
-exposed until a real reader is supplied. There are no booking or cancellation
-requests, invented endpoints, sample confirmations, or stored 25Live credentials.
+`show_study_rooms(start, end, query=None, min_capacity=0, max_results=12)` renders
+`ui://courselight/study_rooms/v2.html`. Start/end are future, same-day local
+Eastern times (`YYYY-MM-DDTHH:MM`). Lehigh sign-in supplies the 25Live session.
+Apple Maps uses the existing browser-scoped token; rooms still work without it.
 
-Implement a server-side `read_reservation(reservation_id) -> RoomReservation`
-that reads the authenticated user's reservation from 25Live. Pass that reader to
-`register_study_rooms(mcp, read_reservation=...)` in `visualizations/__init__.py`.
-It then exposes `show_study_room(reservation_id)`. Keep provider errors safe and
-never return raw credentials or response dumps.
+The flow is:
 
-The contract in `models.py` needs the provider's ID and status, room label,
-building name, a public building search query (or verified coordinates), and
-timezone-aware start/end times. Only map a provider status to `confirmed` after
-the provider confirms the booking. `pending` and `cancelled` render differently.
-An optional source link must point to Lehigh or 25Live. Do not include attendee
-names, emails, tokens, or access codes.
+1. Search Express-bookable rooms and choose one. Availability is a snapshot.
+2. `prepare_study_room_booking` rechecks availability and returns the exact
+   room, time, and event name. It writes nothing to 25Live.
+3. The user presses **Reserve room**. `confirm_study_room_booking` consumes the
+   server-held review and checks availability and the signed-in account again.
+4. Read back the event. Only a confirmed event with the requested active room
+   and matching start/end times is labeled **Reserved**.
 
-For a future booking tool, attach `RESOURCE_URI` in its UI metadata and return
-`reservation_result()` using a validated read-back of the successful booking.
-The booking tool must declare write annotations and obtain the user's approval
-for the actual room and time. Do not reuse this read-only tool to create a booking.
+The last three UI tools (prepare, confirm, and `get_study_room_request`) are
+app-only. The shared bridge sends `tools/call` requests through the MCP Apps
+host; the browser never receives Lehigh cookies or calls 25Live directly.
+The card also updates chat context with the outcome and provider event ID so a
+later request can refer to the booking.
+The confirmation tool is explicitly annotated as a write. Evan's existing
+chat-facing search/book/favorite/cancel tools remain available.
 
-`ui/views/study_rooms/` consumes the contract and reuses
-`ui/shared/maps/MapCanvas.jsx`. Without an API response it explicitly says that
-25Live is not connected. The shared Apple Maps token setup is documented in
-`visualizations/README.md`.
+Reviews expire after 15 minutes and are tied to the reviewing account. Each
+opaque request ID submits at most once in this process, including concurrent
+clicks. Completed/uncertain results are retained up to 24 hours in a bounded
+in-memory store. A server restart loses these records; an old ID cannot submit.
+If a response is interrupted, **Check status** reads the saved outcome and,
+when an event ID is known, refreshes it from 25Live. If no ID is known, check
+25Live manually before starting another request. This is not provider-level
+idempotency across separately created reviews or server restarts.
+
+`show_study_room(event_id)` reads only an event belonging to the signed-in user.
+Cancellation remains the existing chat tool: preview the named booking, obtain
+approval, then cancel. No bulk actions are added. Maps mark buildings rather
+than indoor rooms, and missing building metadata does not hide a booking.
+
+Read in this order: `resource.py` (tools), `models.py` (contracts), `service.py`
+(flow), `../../twentyfivelive.py` (provider), then
+`../../ui/views/study_rooms/StudyRoom.jsx` (interaction) and
+`../../ui/shared/bridge.js` (host calls).

@@ -116,11 +116,19 @@ host. They return validated `structuredContent` and a short text fallback.
 | `show_coursework` | Explicit “coursework” / “course work” requests: add a riskier search for possible work in other course posts |
 | `show_class_schedule` | Show registered Banner classes in a Monday–Friday grid |
 | `show_course_map` | Show course-building pins with course visibility toggles |
+| `show_study_rooms` | Find available 25Live rooms on a map, then review and explicitly reserve one |
+| `show_study_room` | Read a reservation's current status and show its building |
 | `show_schedule_options` | Compare potential schedules using the same grid |
 
 Ordinary assignment requests use `show_courses`. The broader tool uses keyword
 clues and may include unrelated or older items, or miss work. Its cards label
 that limitation and mark undated candidates as week-unverified.
+
+For study rooms, provide a date and start/end time in Eastern time. The card
+walks through selection → review → **Reserve room** → a verified result. Searches
+and reviews do not reserve anything. A pending or interrupted response never
+appears as reserved; **Check status** reads the request without submitting it
+again. See the [room flow](visualizations/study_rooms/README.md) for details.
 
 The schedule views show recurring class times in America/New_York. Date-specific
 meetings, weekend classes, and unknown times remain in the tool result for chat
