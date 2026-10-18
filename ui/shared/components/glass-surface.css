@@ -1,0 +1,9 @@
+.glass-surface {
+  min-width: 0;
+  border: 1px solid var(--glass-edge);
+  background: var(--glass);
+  box-shadow: 0 8px 24px var(--glass-shadow);
+}
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .glass-surface { background: Canvas; border-color: CanvasText; box-shadow: none; }
+}

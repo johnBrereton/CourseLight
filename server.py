@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CourseLight: read-only Moodle tools for course planning and reference, plus Lehigh sign-in, Banner, and Degree Works."""
+"""CourseLight: Moodle and Lehigh reads, sign-in, and an inline Courses view."""
 from __future__ import annotations
 
 import atexit
@@ -21,6 +21,7 @@ from pydantic import Field
 
 import lehigh
 from moodle import ENV_PATH, EXTERNAL_KEYS, Moodle, MoodleError, READ_FUNCTIONS
+from visualizations import register_visualizations
 
 
 mcp = FastMCP('CourseLight', instructions=(
@@ -415,6 +416,9 @@ def plan_next_semester(term: str = '', preferences: str = '') -> str:
    satisfies. Point out tradeoffs, limited seats, and that prerequisites and restrictions aren't
    checked, so I should confirm with my advisor and register myself in Banner.
 """
+
+
+register_visualizations(mcp, get_client=client)
 
 
 if __name__ == '__main__':

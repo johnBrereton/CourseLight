@@ -43,9 +43,17 @@ host. They return validated `structuredContent` and a short text fallback.
 
 | Tool | Purpose |
 | --- | --- |
-| `show_courses` | Fetch selected courses and this week’s assignment deadlines into expandable rows |
+| `show_courses` | Show courses and weekly assignment deadlines |
+| `show_coursework` | Explicit “coursework” / “course work” requests: add a riskier search for possible work in other course posts |
 
+Ordinary assignment requests use `show_courses`. The broader tool uses keyword
+clues and may include unrelated or older items, or miss work. Its cards label
+that limitation and mark undated candidates as week-unverified.
 
+Python tools live in `visualizations/<name>/`; their React views live in
+`ui/views/<name>/`. Reusable UI code is in `ui/shared/`, and generated
+bundles are in `ui/dist/`. See the [folder guide and adding a visualization](visualizations/README.md)
+for the Courses example and its coverage limits.
 
 ## Setup
 

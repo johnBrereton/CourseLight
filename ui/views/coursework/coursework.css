@@ -1,0 +1,8 @@
+@import "../courses/courses.css";
+
+.coursework-risk { margin: 0 0 20px; padding: 0 8px; font-size: 13px; line-height: 1.5; }
+.coursework-risk strong { font-weight: 500; }
+.coursework-risk p { margin: 6px 0 0; color: var(--muted); }
+.coursework-group { border-top: 1px solid var(--line); margin-bottom: 16px; }
+.coursework-group > summary { padding: 16px 0; cursor: pointer; font-size: 13px; font-weight: 500; }
+.coursework-note { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
