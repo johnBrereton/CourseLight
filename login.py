@@ -9,7 +9,13 @@ Banner, and the resulting Lehigh session is saved to
 real browser and approve Duo; the script never sees your password. A saved
 Lehigh session is tried first so you may not need to sign in again.
 
-    .venv/bin/python login.py            # Windows: .venv\\Scripts\\python.exe login.py
+With --gradescope, it instead opens Gradescope, starting from the saved Lehigh
+session so school SSO can carry over, and saves the Gradescope session to
+~/.lehigh-mcp/gradescope_state.json. You sign in with your school or Gradescope
+account in the browser; the script never sees your password.
+
+    .venv/bin/python login.py                # Windows: .venv\\Scripts\\python.exe login.py
+    .venv/bin/python login.py --gradescope
 """
 from __future__ import annotations
 
@@ -18,10 +24,11 @@ import hashlib
 from pathlib import Path
 import secrets
 import sys
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
+from gradescope import BASE as GRADESCOPE, HOST as GRADESCOPE_HOST, SESSION_PATH as GRADESCOPE_SESSION
 from lehigh import BANNER, DEGREEWORKS, SESSION_PATH as LEHIGH_SESSION, SSO_HOST
 
 
@@ -132,7 +139,48 @@ def open_lehigh_apps(context, headless: bool) -> bool:
     return True
 
 
+def gradescope_signed_in(url: str) -> bool:
+    parts = urlsplit(url)
+    return parts.hostname == GRADESCOPE_HOST and parts.path.startswith(('/account', '/courses'))
+
+
+def capture_gradescope(headless: bool) -> bool:
+    """Open Gradescope and save its session once the course dashboard loads."""
+    saved = GRADESCOPE_SESSION if headless else LEHIGH_SESSION
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless)
+        context = browser.new_context(storage_state=str(saved) if saved.exists() else None)
+        page = context.new_page()
+        signed_in = False
+        try:
+            page.goto(f'{GRADESCOPE}/account' if headless else f'{GRADESCOPE}/login')
+            page.wait_for_url(gradescope_signed_in, timeout=10_000 if headless else LOGIN_TIMEOUT_MS)
+            signed_in = True
+        except PlaywrightError:
+            pass
+        if signed_in:
+            GRADESCOPE_SESSION.parent.mkdir(parents=True, exist_ok=True)
+            context.storage_state(path=str(GRADESCOPE_SESSION))
+        browser.close()
+    return signed_in
+
+
+def main_gradescope():
+    if GRADESCOPE_SESSION.exists():
+        print('Trying your saved Gradescope session...')
+        if capture_gradescope(headless=True):
+            print(f'Gradescope session is still valid: {GRADESCOPE_SESSION}')
+            return
+    print('A browser window will open. Sign in to Gradescope (choose School Credentials for Lehigh SSO).')
+    if not capture_gradescope(headless=False):
+        sys.exit('Gradescope sign-in was not completed. Make sure you reach your course dashboard, then try again.')
+    print(f'Saved the Gradescope session to {GRADESCOPE_SESSION}.')
+
+
 def main():
+    if '--gradescope' in sys.argv[1:]:
+        main_gradescope()
+        return
     site_url = (read_env().get('MOODLE_URL') or '').rstrip('/')
     if not site_url or 'example.edu' in site_url:
         site_url = DEFAULT_URL
