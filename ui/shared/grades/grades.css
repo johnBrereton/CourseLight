@@ -1,0 +1,17 @@
+@import "../styles/base.css";
+
+.grade-panel { max-width: 760px; margin: auto; padding: 10px 8px; }
+.grade-card { border-radius: 20px; padding: 22px; }
+.grade-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.grade-heading h1 { margin: 0; font-size: 16px; font-weight: 500; letter-spacing: -.2px; }
+.grade-course { margin: 3px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.grade-note, .grade-message { font-size: 12px; color: var(--muted); }
+.grade-message { padding: 22px; border: 1px solid var(--line); border-radius: 20px; }
+.grade-details { margin-top: 16px; border-top: 1px solid var(--line); font-size: 12px; }
+.grade-details summary { padding: 13px 0; cursor: pointer; }
+.grade-details p, .grade-details li { color: var(--muted); }
+.grade-details ul { padding-left: 17px; }
+.grade-details li + li { margin-top: 4px; }
+.grade-details a { display: inline-block; padding: 8px 0; }
+.grade-link { font-size: 12px; }
+@media (max-width: 460px) { .grade-card { padding: 17px; } }

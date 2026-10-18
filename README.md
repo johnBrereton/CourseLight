@@ -4,15 +4,13 @@ A small, read-only MCP server for Moodle, including Lehigh CourseSite. Connect
 your own account to an MCP client to look up courses, plan deadlines, understand
 assignment requirements, read Moodle Pages, and review your released grades.
 
-CourseLight is the simpler companion to
-[CourseSite-MCP](https://github.com/johnBrereton/CourseSite-MCP). It contains eight
-Moodle read tools, a Lehigh sign-in tool, eleven read-only Lehigh Banner and Degree
-Works tools, three read-only Gradescope tools, and five Python source files. It has no
-quiz-attempt access, question/answer tools, uploads, assignment submissions, or generic
-API tool, on Moodle or Gradescope. Complete assessments and submit your own work
-directly in Moodle or Gradescope.
+CourseLight supports read-only course planning across CourseSite, Gradescope,
+Banner, and Degree Works. It does not retrieve assessment questions, upload files,
+or submit work. Complete assessments directly in CourseSite or Gradescope.
 
-## What it does
+
+
+## Read tools
 
 | Tool | Purpose |
 | --- | --- |
@@ -24,10 +22,12 @@ directly in Moodle or Gradescope.
 | `get_grades` | Read grades released to you for a course, from CourseSite and Gradescope together unless you ask for one |
 | `get_upcoming_work` | Read upcoming action events in a time interval, with pagination |
 | `read_page` | Read the text of a Moodle Page, with pagination |
+| `read_grading_policy` | Read syllabus grading rules from visible course syllabus resources |
 | `login` | Lehigh only: open a browser to sign in with SSO and Duo for CourseSite, Banner, and Degree Works |
 
 At Lehigh, these read the registrar's systems through the same sign-in:
 
+## Registration tools
 | Tool | Purpose |
 | --- | --- |
 | `list_terms` | List Banner term codes, e.g. `202640` for Fall 2026 (no sign-in) |
@@ -42,8 +42,9 @@ At Lehigh, these read the registrar's systems through the same sign-in:
 | `get_gpa` | Read cumulative and major GPA, credits, and GPA by term |
 | `get_course_history` | List every course on your record with term, grade, and credits |
 
-They never register for, add, or drop classes. Off campus, Degree Works needs the
-Lehigh VPN. A Degree Works audit doesn't replace advising.
+Off campus, Degree Works needs the Lehigh VPN. A Degree Works audit doesn't replace advising.
+
+## Gradescope
 
 Gradescope has its own sign-in:
 
@@ -79,11 +80,35 @@ builder itself. The planning prompt separately reads section requirements and
 registration readiness; confirm eligibility with your advisor and register
 yourself in Banner.
 
-Quiz titles and deadlines may appear in a course outline or calendar. CourseLight
-does not open quiz attempts, retrieve their questions, save answers, or submit
-them. Resource links are for you to open in Moodle; there is no file downloader,
-PDF/Office extraction, or download proxy. Moodle Pages are the Page activity type,
-not arbitrary web pages or uploaded documents.
+## Visualized tools
+
+Visualized tools display interactive components inline in an MCP Apps-compatible
+host. They return validated `structuredContent` and a short text fallback.
+
+| Tool | Purpose |
+| --- | --- |
+| `show_courses` | Show courses and weekly assignment deadlines |
+| `show_deadlines` | Show weekly assignment deadlines in a chronological timeline |
+| `show_gradebook` | Show CourseSite and Gradescope scores in a compact grade grid |
+| `show_grade_target` | Explore a syllabus-backed target grade with draggable score bars |
+| `show_study_materials` | Expand selected study topics into course materials and download links |
+| `show_coursework` | Explicit “coursework” / “course work” requests: add a riskier search for possible work in other course posts |
+| `show_class_schedule` | Show registered Banner classes in a Monday–Friday grid |
+| `show_schedule_options` | Compare potential schedules using the same grid |
+
+Ordinary assignment requests use `show_courses`. The broader tool uses keyword
+clues and may include unrelated or older items, or miss work. Its cards label
+that limitation and mark undated candidates as week-unverified.
+
+The schedule views show recurring class times in America/New_York. Date-specific
+meetings, weekend classes, and unknown times remain in the tool result for chat
+and class details; they are not plotted in the weekday grid. Proposed
+schedules can be switched locally; nothing is registered, dropped, or saved.
+
+Python tools live in `visualizations/<name>/`; their React views live in
+`ui/views/<name>/`. Reusable UI code is in `ui/shared/`, and generated
+bundles are in `ui/dist/`. See the [folder guide and adding a visualization](visualizations/README.md)
+for the Courses example and its coverage limits.
 
 ## Setup
 
@@ -106,37 +131,6 @@ and set `MOODLE_TOKEN` to your own token. For Lehigh, the base URL is
 `/webservice/rest/server.php`. Moodle installed in a subdirectory is supported,
 for example `https://example.edu/moodle`.
 
-### Lehigh: sign in with SSO instead of pasting a token
-
-At Lehigh you can skip finding a token and creating `.env`. After installing the
-requirements, install the browser used for sign-in:
-
-```sh
-.venv/bin/python -m playwright install chromium
-```
-
-Then connect your MCP client (below) and just ask about your courses. When
-there's no token yet, or it has expired, tools report that you're not signed in
-and the client calls `login`: a browser opens, you sign in with your Lehigh
-account and approve Duo, and the token is saved and used right away. Later
-sessions reuse it. You can also sign in from a terminal with
-`.venv/bin/python login.py`, for example if your client times out long tool calls.
-
-`login.py`
-uses CourseSite's Moodle mobile-app login (the flow the official Moodle app
-uses) to get a token for your own account and writes `MOODLE_URL` and
-`MOODLE_TOKEN` to `.env`. In the same browser it then opens Degree Works and
-Banner and saves the Lehigh session to `~/.lehigh-mcp/storage_state.json` for
-those tools. It never sees your password. If a saved Lehigh session exists, it
-tries that first. Lehigh sessions expire sooner than the CourseSite token, so
-the Banner and Degree Works tools may ask you to sign in again first. This token
-is a full Moodle app token, so it can do more than CourseLight's read allowlist
-uses; keep `.env` private, and run `login.py` again if the token stops working.
-
-Windows users can create the environment with `py -m venv .venv`, use
-`.venv\Scripts\python.exe` in place of `.venv/bin/python`, and copy the example
-file with `Copy-Item .env.example .env` in PowerShell.
-
 ### Connect an MCP client
 
 Use a client that supports local **stdio** MCP servers. Add the following server
@@ -156,8 +150,9 @@ configuration, replacing both paths with the absolute paths on your machine:
 The same example is in `mcp.json.example`. Your client determines where to put
 this configuration. On Windows, use `python.exe` under `.venv\Scripts` and escape
 backslashes in JSON, or use forward slashes. The client starts the server when
-needed. There is no separate web server or public endpoint. The server reads
-`.env` beside its source files regardless of the client's working directory;
+needed. The default stdio connection starts no web server or public endpoint.
+The server reads `.env` beside its source files regardless of the client's
+working directory;
 existing environment variables take precedence. Restart the connection after
 changing credentials or updating the tool definitions.
 
@@ -186,7 +181,9 @@ Banner, and Degree Works sites, and are never returned in tool results. Gradesco
 cookies are sent only to `www.gradescope.com`, used only for page reads, and are
 never returned in tool results.
 
-There are no local journals, staged submissions, or downloaded course files. The
+There are no local journals, staged submissions, or saved course files. The syllabus
+reader extracts bounded PDF content in memory and may read public Google Docs
+linked as syllabi; it never sends Moodle credentials to those external links. The
 only application data is the Lehigh and Gradescope sign-in sessions in
 `~/.lehigh-mcp/`, outside the repository. `.env`, virtual environments, local MCP configuration,
 and logs are ignored by Git. The default stdio connection needs no tunnel key,
@@ -231,7 +228,7 @@ the returned audit are included; options are no longer limited to 20 per rule.
 Unknown requirement progress is reported as unknown. Neither a degree audit nor
 a generated schedule guarantees eligibility to graduate or register.
 
-Tools return `{ "ok": true, "fetched_at": ..., "data": ... }` or
+The read tools return `{ "ok": true, "fetched_at": ..., "data": ... }` or
 `{ "ok": false, "error": { "code": ..., "message": ... } }`.
 Warnings and unavailable data should be reported, rather than interpreted as
 completion or missing coursework. Always verify consequential dates and grades
