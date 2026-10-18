@@ -4,3 +4,4 @@ python-dotenv==1.2.3
 pydantic==2.13.5
 playwright==1.64.0
 pypdf==6.21.1
+tzdata==2026.5
