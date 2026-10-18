@@ -19,6 +19,10 @@ visualizations/
     service.py                    Adds discovery to the assignment reader
     discovery.py                  Finds possible work in other course posts
     models.py                     Extends the result with heuristic candidates
+  materials/
+    resource.py                   Exam-prep material selection tool
+    service.py                    Reads real modules and browser file links
+    models.py                     Topic selections and material groups
   deadlines/
     resource.py                   Timeline tool; reuses Courses models and reader
   schedule/
@@ -31,6 +35,7 @@ ui/
       main.jsx                    React entry point
     coursework/                   Broader view, candidate rows, and risk notice
     deadlines/                    Simple timeline, grouped by local due date
+    materials/                    Expandable topic bars and download links
     schedule/                     One React view for both schedule tools
   shared/
     bridge.js                     MCP Apps host messaging
@@ -148,3 +153,21 @@ Coverage is assignment-only. Unknown dates are not placed on the timeline, and
 submission/completion status is not inferred. The assistant states the selected
 week, timezone, and coverage in chat. The view handles no returned deadlines,
 failed loads, and courses that could not be read.
+
+
+## Study materials
+
+`show_study_materials(course_id, groups)` renders `ui://courselight/materials/v1.html`
+with the `materials.v1` schema. First inspect `get_course_contents`, then select
+actual `module.id` values in groups such as `{"title": "Type systems", "module_ids": [...]}`.
+Usually three topic groups keep exam-prep requests focused. Establish the exam
+scope from the user or a posted review outline; otherwise describe the selection
+as suggested study materials in chat. This tool does not infer an exam syllabus.
+
+The service re-reads the selected modules and returns only accessible resources,
+folders, pages, URLs, and books. Quizzes and submissions are excluded. File rows
+have Download links; other resources open their CourseSite source. Download URLs
+use Moodle's browser `pluginfile.php` endpoint and `forcedownload=1`, with no web
+service token. A CourseSite browser sign-in is required. See [Moodle file handling](https://moodledev.io/docs/4.5/apis/subsystems/external/files).
+The server does not fetch, cache, or bundle file contents, and there is no ZIP or
+"download all" action. All expansion state is local to the React view.
