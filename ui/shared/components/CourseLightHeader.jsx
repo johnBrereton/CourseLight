@@ -1,6 +1,6 @@
-import lehighBrown from "../../shared/assets/branding/lehigh-university-brown.png";
-import lehighWhite from "../../shared/assets/branding/lehigh-university-white.png";
-import { CourseLightMark } from "../../shared/components/CourseLightMark.jsx";
+import lehighBrown from "../assets/branding/lehigh-university-brown.png";
+import lehighWhite from "../assets/branding/lehigh-university-white.png";
+import { CourseLightMark } from "./CourseLightMark.jsx";
 
 export function CourseLightHeader() {
   return (

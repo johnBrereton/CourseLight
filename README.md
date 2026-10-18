@@ -45,10 +45,17 @@ host. They return validated `structuredContent` and a short text fallback.
 | --- | --- |
 | `show_courses` | Show courses and weekly assignment deadlines |
 | `show_coursework` | Explicit “coursework” / “course work” requests: add a riskier search for possible work in other course posts |
+| `show_class_schedule` | Show registered Banner classes in a Monday–Friday grid |
+| `show_schedule_options` | Compare potential schedules using the same grid |
 
 Ordinary assignment requests use `show_courses`. The broader tool uses keyword
 clues and may include unrelated or older items, or miss work. Its cards label
 that limitation and mark undated candidates as week-unverified.
+
+The schedule views show recurring class times in America/New_York. Date-specific
+meetings, weekend classes, and unknown times remain in the tool result for chat
+and class details; they are not plotted in the weekday grid. Proposed
+schedules can be switched locally; nothing is registered, dropped, or saved.
 
 Python tools live in `visualizations/<name>/`; their React views live in
 `ui/views/<name>/`. Reusable UI code is in `ui/shared/`, and generated

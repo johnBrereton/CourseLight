@@ -1,0 +1,56 @@
+/* Clear glass with brown, gold, and white branding. */
+:root {
+  /* Host height updates can lag a frame during expansion. Keep scrollbar space stable. */
+  scrollbar-gutter: stable;
+  color-scheme: light dark;
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  --text: light-dark(#242424, #f4f4f4);
+  --muted: light-dark(#515151, #bcbcbc);
+  --link: light-dark(#303030, #eeeeee);
+  --panel: light-dark(#fff, transparent);
+  --glass: light-dark(rgb(255 255 255 / .02), rgb(255 255 255 / .025));
+  --glass-edge: light-dark(rgb(255 255 255 / .5), rgb(255 255 255 / .16));
+  --glass-rim: light-dark(rgb(0 0 0 / .07), rgb(0 0 0 / .08));
+  --brand: light-dark(#502d0e, #fff);
+  --brand-gold: #efcd64;
+  --brand-ink: #502d0e;
+  --glass-shadow: light-dark(rgb(0 0 0 / .07), rgb(0 0 0 / .13));
+  --glass-bevel: light-dark(rgb(0 0 0 / .16), transparent);
+  --glass-glint: light-dark(#fff, transparent);
+  --glass-reflection: light-dark(rgb(0 0 0 / .035), transparent);
+  --glass-inset: light-dark(rgb(0 0 0 / .045), transparent);
+  --line: light-dark(rgb(0 0 0 / .1), rgb(255 255 255 / .16));
+  --warning: light-dark(#515151, #d4d4d4);
+  --warning-bg: light-dark(rgb(0 0 0 / .03), rgb(255 255 255 / .06));
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; --icon-filter: invert(1); --logo-light: none; --logo-dark: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --icon-filter: invert(1); --logo-light: none; --logo-dark: block; }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--text); background: transparent; }
+[hidden] { display: none !important; }
+a { color: var(--link); text-decoration: none; text-underline-offset: 3px; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 4px; border-radius: 4px; }
+.courselight-header { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 0 4px 20px; color: var(--brand); }
+.courselight-brand { display: flex; align-items: center; gap: 9px; }
+.courselight-mark { flex: 0 0 28px; width: 28px; height: 34px; }
+.bulb-globe { fill: var(--brand-gold); stroke: var(--brand-ink); }
+.bulb-highlight { stroke: #fff; stroke-width: 2; }
+.bulb-filament { stroke: var(--brand-ink); }
+.courselight-brand h1 { margin: 0; font: 400 clamp(20px, 4.8vw, 24px)/1.15 Georgia, "Times New Roman", serif;
+  letter-spacing: -.65px; white-space: nowrap; }
+.courselight-campus { flex: 0 1 140px; min-width: 64px; }
+.lehigh-logo { width: 100%; height: auto; }
+.lehigh-logo-light { display: var(--logo-light, block); }
+.lehigh-logo-dark { display: var(--logo-dark, none); }
+
+@media (max-width: 540px) {
+  .courselight-header { padding: 4px 2px 18px; }
+  .courselight-campus { flex-basis: 112px; }
+}

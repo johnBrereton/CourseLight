@@ -418,7 +418,7 @@ def plan_next_semester(term: str = '', preferences: str = '') -> str:
 """
 
 
-register_visualizations(mcp, get_client=client)
+register_visualizations(mcp, get_client=client, clean=clean)
 
 
 if __name__ == '__main__':

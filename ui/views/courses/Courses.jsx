@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { CourseCard } from "./CourseCard.jsx";
-import { CourseLightHeader } from "./CourseLightHeader.jsx";
+import { CourseLightHeader } from "../../shared/components/CourseLightHeader.jsx";
 
 export function Courses({ status, view, Card = CourseCard, notice }) {
   const stackRef = useRef(null);

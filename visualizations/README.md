@@ -19,18 +19,26 @@ visualizations/
     service.py                    Adds discovery to the assignment reader
     discovery.py                  Finds possible work in other course posts
     models.py                     Extends the result with heuristic candidates
+  schedule/
+    resource.py                   Registered and proposed schedule tools
+    service.py                    Adapts the existing Banner readers
+    models.py                     One shared schedule result contract
 ui/
   views/
     courses/                      React components, CSS, HTML, and result adapter
       main.jsx                    React entry point
     coursework/                   Broader view, candidate rows, and risk notice
+    schedule/                     One React view for both schedule tools
   shared/
     bridge.js                     MCP Apps host messaging
-    components/                   Shared glass surfaces and CourseLight mark
+    components/                   Glass surfaces, CourseLight mark, and header
+    schedule/                     Reusable weekly grid, layout, and class details
+    styles/                       Common theme tokens and branding styles
     assets/                       Logos, icons, and licenses
   dist/
     courses/                      Generated bundle.js and bundle.css
     coursework/                   Separate generated coursework bundle
+    schedule/                     Shared registered/proposed schedule bundle
   build.mjs                       Builds every folder under views/
   package.json                    Shared frontend dependencies
 ```
@@ -95,7 +103,31 @@ week-unverified, never counted as due, and capped at 20 per course. Each item
 includes its source link and section. File contents, external tools, and forum
 discussion replies are not fetched, and quiz attempts/questions remain excluded.
 The Moodle API allowlist is unchanged. An assignment read can fail while the
-same card still shows discoverable coursework with a partial-data warning.
+same card still shows discoverable coursework with a loading-failure notice.
 
 The module metadata and date fields follow the
 [Moodle course contents API](https://github.com/moodle/moodle/blob/MOODLE_405_STABLE/course/externallib.php).
+
+## Class schedules
+
+`show_class_schedule(term)` reads actual registrations with
+`lehigh.get_registration`. It requires the existing Lehigh sign-in and never
+guesses registered sections from CourseSite names. Dropped, withdrawn, cancelled,
+and waitlisted records are excluded from the class grid.
+
+`show_schedule_options(term, courses, ...)` reuses `lehigh.build_schedules`,
+including its linked lecture/lab pairing and preference filters. Switching
+returned options is local React state. No schedule or registration is written.
+Prerequisites, holds, and restrictions are not checked by that existing builder.
+
+Both tools return `schedule.v1` and point to `ui://courselight/schedule/v1.html`.
+The shared `ui/shared/schedule/WeeklyGrid.jsx` accepts normalized sections;
+`layout.js` positions overlapping blocks in separate lanes. `ClassDetails.jsx`
+provides keyboard-accessible meeting details. Shared branding and theme styles
+are used by the course cards and the schedule view.
+
+This is a weekly pattern in New York time, not a holiday-aware calendar. Meetings
+whose date ranges are shorter than one week (including one-off exams), weekend
+meetings, and TBA times remain in the result for chat and class details. They are
+not plotted in the weekday grid; unknown times are never placed at a guessed hour. Narrow hosts can scroll the five-day grid
+horizontally. Course details retain the original meeting dates and source CRNs.

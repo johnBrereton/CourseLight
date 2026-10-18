@@ -1,0 +1,9 @@
+@import "../../shared/styles/base.css";
+
+.schedule-panel { max-width: 960px; margin: auto; padding: 6px; }
+.schedule-options { display: inline-flex; flex-wrap: wrap; gap: 4px; margin: 0 0 16px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; }
+.schedule-options button { padding: 7px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.schedule-options button[aria-pressed="true"] { color: var(--text); background: light-dark(#fff, #3a3a3a); box-shadow: 0 1px 6px var(--glass-shadow); }
+.schedule-empty { padding: 24px; border: 1px solid var(--line); border-radius: 18px; color: var(--muted); font-size: 13px; }
+.schedule-empty h2, .schedule-empty h3 { margin: 0 0 8px; color: var(--text); font-size: 16px; font-weight: 500; }
+.schedule-empty p { margin: 0; }
