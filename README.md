@@ -24,7 +24,7 @@ or submit work. Complete assessments directly in CourseSite or Gradescope.
 | `read_page` | Read the text of a Moodle Page, with pagination |
 | `read_grading_policy` | Read syllabus grading rules from visible course syllabus resources |
 | `read_course_file` | Read a PDF, DOCX, TXT, or Markdown document from a course Resource or Folder, such as a syllabus |
-| `login` | Lehigh only: open a browser to sign in with SSO and Duo for CourseSite, Banner, and Degree Works |
+| `login` | Lehigh only: open a browser to sign in with SSO and Duo for CourseSite, Banner, Degree Works, and 25Live |
 
 At Lehigh, these read the registrar's systems through the same sign-in:
 
@@ -44,6 +44,25 @@ At Lehigh, these read the registrar's systems through the same sign-in:
 | `get_course_history` | List every course on your record with term, grade, and credits |
 
 Off campus, Degree Works needs the Lehigh VPN. A Degree Works audit doesn't replace advising.
+
+## Room booking (25Live)
+
+Lehigh's 25Live uses the same sign-in as `login`, so there is no extra step. These are
+the only tools that change anything, and each acts on one room or one event:
+
+| Tool | Purpose |
+| --- | --- |
+| `search_rooms` | Find rooms you can book instantly for a time window, filtered by name or capacity (read-only) |
+| `book_room` | Book one room (Express, confirmed immediately), optionally favoriting the event |
+| `favorite_room_booking` | Star one of your 25Live events |
+| `cancel_room_booking` | Cancel one of your own bookings |
+
+`book_room` and `cancel_room_booking` first return a preview and change nothing until called
+again with `confirm=true`; the assistant should do that only after you approve the exact room,
+date, time, and event name. Say, for example, "Find me a room for 6 in the library tomorrow 2 to 3,"
+then "Book FM 621." Bookings are made in your name, and results are read back from 25Live. If a
+check says it is not confirmed, look in 25Live. Only rooms you may Express-book are searchable, and
+conflicting bookings are reported without naming the other event.
 
 ## Gradescope
 
@@ -189,7 +208,7 @@ your connection can read the course information available to that account.
 Course information returned by the tools is sent to your MCP client and may be
 processed or retained according to that client's settings.
 
-CourseLight's transport enforces a fixed allowlist of read functions. These
+Apart from the 25Live room tools above, CourseLight is read-only. Its Moodle transport enforces a fixed allowlist of read functions. These
 requests use POST because that is how Moodle's REST API works; they do not invoke
 submission or assessment-write functions. A token may have broader permissions
 outside this application. Where possible, ask for a service token restricted to
