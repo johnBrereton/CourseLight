@@ -4,6 +4,10 @@ A small, read-only MCP server for Moodle, including Lehigh CourseSite. Connect
 your own account to an MCP client to look up courses, plan deadlines, understand
 assignment requirements, read Moodle Pages, and review your released grades.
 
+CourseLight supports read-only course planning across CourseSite, Gradescope,
+Banner, and Degree Works. It does not retrieve assessment questions, upload files,
+or submit work. Complete assessments directly in CourseSite or Gradescope.
+
 
 
 ## Read tools
@@ -15,7 +19,7 @@ assignment requirements, read Moodle Pages, and review your released grades.
 | `get_course_contents` | Browse sections, activity descriptions, and resource links |
 | `list_assignments` | Read one course's assignment requirements and dates |
 | `get_assignment_status` | Read one assignment's requirements and your submission status |
-| `get_grades` | Read grades released to you for a course |
+| `get_grades` | Read grades released to you for a course, from CourseSite and Gradescope together unless you ask for one |
 | `get_upcoming_work` | Read upcoming action events in a time interval, with pagination |
 | `read_page` | Read the text of a Moodle Page, with pagination |
 | `login` | Lehigh only: open a browser to sign in with SSO and Duo for CourseSite, Banner, and Degree Works |
@@ -36,6 +40,39 @@ At Lehigh, these read the registrar's systems through the same sign-in:
 
 Off campus, Degree Works needs the Lehigh VPN. A Degree Works audit doesn't replace advising.
 
+## Gradescope
+
+Gradescope has its own sign-in:
+
+| Tool | Purpose |
+| --- | --- |
+| `login_gradescope` | Open a browser to sign in to Gradescope (School Credentials for Lehigh SSO) |
+| `list_gradescope_courses` | List your Gradescope courses with term and role |
+| `list_gradescope_assignments` | Read a course's assignments: status, score, release, due, and late due dates |
+
+Gradescope tools are read-only: CourseLight never uploads files or submits work
+to Gradescope (or Moodle). Submit your work yourself on the site. Gradescope has no
+public student API, so these read its web pages and may need updating if
+Gradescope changes them.
+
+Asking for grades ("Show my grades for CSE 303") uses `get_grades`, which by
+default returns both CourseSite and Gradescope grades for the course. Pass either
+site's course ID; the other site's course is matched by course code (such as
+"CSE 303"), preferring the same term, and the match is reported so you can correct
+it. Ask for "only Gradescope" or "only CourseSite" grades to read one site. If one
+site isn't signed in or the course doesn't use it, that part says so and the other
+is still shown.
+
+Sign in from a terminal with `.venv/bin/python login.py --gradescope` if your
+client times out long tool calls.
+
+To plan a semester, ask something like "Using courselight, look at my degree audit
+and build me some schedules for next semester, no Friday classes." The
+`plan_next_semester` prompt (in your client's prompt or `/` menu) walks through the
+same steps: read the audit, search next term for what you still need, ask your
+preferences, and build schedules. Schedules are suggestions: prerequisites,
+major restrictions, and registration holds aren't checked, so confirm with your
+advisor and register yourself in Banner.
 ## Visualized tools
 
 Visualized tools display interactive components inline in an MCP Apps-compatible
@@ -131,11 +168,13 @@ the required reads. Credentials travel only to the configured HTTPS Moodle URL;
 redirects are not followed. Token fields and debug traces are stripped from tool
 results, and transport errors do not expose raw server responses. The Lehigh
 session cookies are used only by a local headless browser on Lehigh's SSO,
-Banner, and Degree Works sites, and are never returned in tool results.
+Banner, and Degree Works sites, and are never returned in tool results. Gradescope
+cookies are sent only to `www.gradescope.com`, used only for page reads, and are
+never returned in tool results.
 
 There are no local journals, staged submissions, or downloaded course files. The
-only application data is the Lehigh sign-in session in `~/.lehigh-mcp/`, outside
-the repository. `.env`, virtual environments, local MCP configuration,
+only application data is the Lehigh and Gradescope sign-in sessions in
+`~/.lehigh-mcp/`, outside the repository. `.env`, virtual environments, local MCP configuration,
 and logs are ignored by Git. The default stdio connection needs no tunnel key,
 hosting account, database, or public listener.
 
