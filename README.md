@@ -47,12 +47,13 @@ Off campus, Degree Works needs the Lehigh VPN. A Degree Works audit doesn't repl
 
 ## Room booking (25Live)
 
-Lehigh's 25Live uses the same sign-in as `login`, so there is no extra step. These are
-the only tools that change anything, and each acts on one room or one event:
+Lehigh's 25Live uses the same sign-in as `login`, so there is no extra step. The
+booking, favorite, and cancel tools are the only ones that change anything, and each acts on one room or one event:
 
 | Tool | Purpose |
 | --- | --- |
 | `search_rooms` | Find rooms you can book instantly for a time window, filtered by name or capacity (read-only) |
+| `list_my_events` | List your own 25Live events (as requestor or scheduler), soonest first, with rooms and status (read-only) |
 | `book_room` | Book one room (Express, confirmed immediately), optionally favoriting the event |
 | `favorite_room_booking` | Star one of your 25Live events |
 | `cancel_room_booking` | Cancel one of your own bookings |
