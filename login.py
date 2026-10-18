@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Sign in with Lehigh SSO once for CourseSite, Banner, and Degree Works.
+"""Sign in with Lehigh SSO once for CourseSite, Banner, Degree Works, and 25Live.
 
 The CourseSite token comes from Moodle's mobile-app login
 (admin/tool/mobile/launch.php), the same flow the official Moodle app uses on
 SSO sites, and is saved to .env. The same browser then opens Degree Works and
-Banner, and the resulting Lehigh session is saved to
+Banner, and 25Live, and the resulting Lehigh session is saved to
 ~/.lehigh-mcp/storage_state.json for those tools. You sign in yourself in a
 real browser and approve Duo; the script never sees your password. A saved
 Lehigh session is tried first so you may not need to sign in again.
@@ -30,6 +30,7 @@ from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
 from gradescope import BASE as GRADESCOPE, HOST as GRADESCOPE_HOST, SESSION_PATH as GRADESCOPE_SESSION
 from lehigh import BANNER, DEGREEWORKS, SESSION_PATH as LEHIGH_SESSION, SSO_HOST
+from twentyfivelive import establish_session as open_twentyfivelive
 
 
 ENV_PATH = Path(__file__).resolve().parent / '.env'
@@ -136,6 +137,9 @@ def open_lehigh_apps(context, headless: bool) -> bool:
             if headless:
                 return False
             print(f'Could not open {landed}; those tools may ask you to sign in again later.')
+    # 25Live is best effort: its cookies are renewed from the SSO session when a room tool needs them.
+    if not open_twentyfivelive(context) and not headless:
+        print('Could not open 25Live; room tools will try again when you use them.')
     return True
 
 
