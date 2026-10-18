@@ -203,6 +203,8 @@ def _meetings(meeting_times: list[dict]) -> list[dict]:
             'days': ''.join(code for key, code in DAYS if meeting.get(key)) or 'TBA',
             'time': f'{start}-{end}' if start and end else 'TBA',
             'location': ' '.join(filter(None, [meeting.get('buildingDescription'), meeting.get('room')])) or 'TBA',
+            'building': meeting.get('buildingDescription') or '',
+            'room': meeting.get('room') or '',
             'dates': f"{meeting.get('startDate')} to {meeting.get('endDate')}",
             'type': meeting.get('meetingTypeDescription'),
         })

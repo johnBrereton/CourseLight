@@ -65,7 +65,7 @@
         if (!ready) return;
         if (message.method === "ui/notifications/tool-result") {
           if (message.params?.isError) onError("The requested data wasn’t returned. Ask ChatGPT to check the connection and try again.");
-          else onResult(message.params?.structuredContent);
+          else onResult(message.params?.structuredContent, message.params?._meta || {});
         } else if (message.method === "ui/notifications/host-context-changed") {
           onContext(message.params || {});
         } else if (message.method === "ui/notifications/tool-cancelled") {

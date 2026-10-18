@@ -32,6 +32,10 @@ visualizations/
     resource.py                   Separate grade-target tool and resource
     service.py                    Verifies syllabus evidence and grade references
     models.py                     Fixed-weight scenario inputs and result
+  degree_progress/
+    resource.py                   Degree-completion ring and GPA tool
+    service.py                    Reuses the existing Degree Works audit reader
+    models.py                     Reported progress, GPA, and audit date
   deadlines/
     resource.py                   Timeline tool; reuses Courses models and reader
   schedule/
@@ -45,6 +49,7 @@ ui/
     coursework/                   Broader view, candidate rows, and risk notice
     deadlines/                    Simple timeline, grouped by local due date
     materials/                    Expandable topic bars and download links
+    degree_progress/              Degree/major completion rings and GPA card
     gradebook/                    Compact source grade grid
     grade_target/                 Draggable score bars and projected final grade
     schedule/                     One React view for both schedule tools
@@ -245,3 +250,42 @@ covered, targets above the possible maximum, and no unresolved work. Required
 percentages round upward to a tenth. Per-item sliders answer what is needed on one
 item while holding the other estimates fixed. The default 90% target is a scenario,
 not a letter grade. Changes are local and reset when a new tool result arrives.
+
+
+## Degree progress
+
+`show_degree_progress()` renders `ui://courselight/degree_progress/v1.html`
+with `degree_progress.v1`. It calls the existing `lehigh.fetch_audit()` reader
+once and selects the reported degree-completion percentage, each `MAJOR` block’s
+completion percentage, and cumulative GPA from `summarize_audit`. Major progress
+is shown separately for each major; it is not calculated or averaged. It does not calculate completion from credits, average
+degree programs, run a new audit, or include personal identifiers and advisors.
+
+The compact React card uses matched SVG rings, shared glass surfaces, and the
+shared MCP Apps bridge. It shows the audit date and a Degree Works link. Missing
+values stay unavailable rather than becoming zero. The assistant also reports
+the audit date in chat; an audit snapshot does not establish graduation eligibility.
+The same Lehigh sign-in and off-campus VPN requirements apply as to `get_degree_audit`.
+
+
+## Campus maps and study rooms
+
+`show_course_map(term, on_date=None)` reuses registered Banner meetings and
+renders `ui://courselight/course_map/v1.html`. Course chips show or hide building
+pins on Apple Maps. It uses verified Lehigh campus coordinates where available,
+and conservative Apple building searches otherwise. The card has no timetable
+or route calculation.
+
+Set a browser-scoped `APPLE_MAPS_TOKEN` in your ignored `.env`, then restart the
+MCP process. Optional `APPLE_MAPS_WIDGET_DOMAIN` selects a dedicated HTTPS origin.
+See [Apple Maps setup](maps/README.md) for token restrictions, host CSP requirements,
+the fields sent to Apple, and connection verification. The public web token is
+delivered only in component metadata, never in model-facing data or built files.
+
+Feature code lives in `course_map/` and `ui/views/course_map/`; shared provider
+configuration is in `maps/` and shared React map rendering in `ui/shared/maps/`.
+
+`study_rooms/` and `ui/views/study_rooms/` scaffold the 25Live reservation view
+using that same map. Only the UI resource is registered today. No reservation tool
+or booking action is exposed until the real API reader is connected. See the
+[25Live adapter handoff](study_rooms/README.md) for the status and location contract.

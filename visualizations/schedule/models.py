@@ -56,6 +56,8 @@ class Meeting(Model):
     end_minute: Annotated[int, Field(strict=True, gt=0, le=1440)] | None
     time_label: Annotated[str, Field(min_length=1, max_length=80)]
     location: Label
+    building: Annotated[str, Field(max_length=240)] = ''
+    room: Annotated[str, Field(max_length=80)] = ''
     kind: Annotated[str, Field(max_length=100)]
     start_date: date | None
     end_date: date | None

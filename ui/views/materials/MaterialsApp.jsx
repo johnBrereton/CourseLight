@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { GlassProvider } from "../../shared/components/GlassSurface.jsx";
+import { CourseLightHeader } from "../../shared/components/CourseLightHeader.jsx";
 import { MaterialGroup } from "./MaterialGroup.jsx";
 import { readMaterialsResult } from "./tool-result.js";
 
@@ -18,6 +19,7 @@ export function MaterialsApp({ bridge, onTeardown }) {
     onTeardown,
   }), [bridge, onTeardown]);
   return <GlassProvider><main className="planner materials-panel" aria-label="Study materials">
+    <CourseLightHeader />
     {state.status === "loading" && <p className="materials-message" role="status">Gathering study materials…</p>}
     {state.status === "error" && <p className="materials-message" role="alert">Materials couldn’t load. Ask ChatGPT to check CourseSite and try again.</p>}
     {state.status === "ready" && (state.view.groups.length ? <div className="materials-stack">

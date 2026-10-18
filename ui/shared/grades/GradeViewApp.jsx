@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { GlassProvider } from "../components/GlassSurface.jsx";
+import { CourseLightHeader } from "../components/CourseLightHeader.jsx";
 
 export function GradeViewApp({ bridge, onTeardown, name, readResult, View }) {
   const [state, setState] = useState({ status: "loading", view: null, revision: 0 });
@@ -18,6 +19,7 @@ export function GradeViewApp({ bridge, onTeardown, name, readResult, View }) {
     onTeardown,
   }), [bridge, onTeardown, name, readResult]);
   return <GlassProvider><main className="planner grade-panel" aria-label={name}>
+    <CourseLightHeader />
     {state.status === "loading" && <p className="grade-message" role="status">Loading {name.toLowerCase()}…</p>}
     {state.status === "error" && <p className="grade-message" role="alert">This view couldn’t load. Ask ChatGPT to check the course and try again.</p>}
     {state.status === "ready" && <View key={state.revision} view={state.view} />}

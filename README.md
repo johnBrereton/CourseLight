@@ -89,11 +89,13 @@ host. They return validated `structuredContent` and a short text fallback.
 | --- | --- |
 | `show_courses` | Show courses and weekly assignment deadlines |
 | `show_deadlines` | Show weekly assignment deadlines in a chronological timeline |
+| `show_degree_progress` | Show degree and major completion rings with reported cumulative GPA from Degree Works |
 | `show_gradebook` | Show CourseSite and Gradescope scores in a compact grade grid |
 | `show_grade_target` | Explore a syllabus-backed target grade with draggable score bars |
 | `show_study_materials` | Expand selected study topics into course materials and download links |
 | `show_coursework` | Explicit “coursework” / “course work” requests: add a riskier search for possible work in other course posts |
 | `show_class_schedule` | Show registered Banner classes in a Monday–Friday grid |
+| `show_course_map` | Show course-building pins with course visibility toggles |
 | `show_schedule_options` | Compare potential schedules using the same grid |
 
 Ordinary assignment requests use `show_courses`. The broader tool uses keyword

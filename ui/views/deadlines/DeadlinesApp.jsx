@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { GlassProvider } from "../../shared/components/GlassSurface.jsx";
+import { CourseLightHeader } from "../../shared/components/CourseLightHeader.jsx";
 import { readCoursesResult } from "../courses/tool-result.js";
 import { DeadlineTimeline } from "./DeadlineTimeline.jsx";
 
@@ -18,6 +19,7 @@ export function DeadlinesApp({ bridge, onTeardown }) {
     onTeardown,
   }), [bridge, onTeardown]);
   return <GlassProvider><main className="planner deadlines-panel" aria-label="Assignment deadline timeline">
+    <CourseLightHeader />
     {state.status === "loading" && <p className="timeline-message" role="status">Reading deadlines…</p>}
     {state.status === "error" && <p className="timeline-message" role="alert">Deadlines couldn’t load. Ask ChatGPT to check CourseSite and try again.</p>}
     {state.status === "ready" && <DeadlineTimeline view={state.view} />}

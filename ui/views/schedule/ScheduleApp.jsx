@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { GlassProvider } from "../../shared/components/GlassSurface.jsx";
+import { CourseLightHeader } from "../../shared/components/CourseLightHeader.jsx";
 import { readScheduleResult } from "./tool-result.js";
 import { Schedule } from "./Schedule.jsx";
 
@@ -20,6 +21,7 @@ export function ScheduleApp({ bridge, onTeardown }) {
     onTeardown,
   }), [bridge, onTeardown]);
   return <GlassProvider><main className="planner schedule-panel" aria-label="Class schedule">
+    <CourseLightHeader />
     {state.status === "loading" && <p className="schedule-empty" role="status">Reading your schedule…</p>}
     {state.status === "error" && <div className="schedule-empty" role="alert">
       <h2>The schedule couldn’t load.</h2><p>Ask ChatGPT to check Banner or your Lehigh sign-in and try again.</p>

@@ -12,3 +12,6 @@ __pycache__/
 reports/
 *.log
 node_modules/
+
+# Apple signing keys stay local.
+*.p8

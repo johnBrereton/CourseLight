@@ -1,0 +1,38 @@
+@import "../styles/base.css";
+
+.map-panel { max-width: 740px; margin: auto; padding: 10px 8px; }
+.map-course-toggles { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 12px; }
+.map-course-toggles button { display: flex; align-items: center; gap: 6px; min-height: 36px; border: 1px solid var(--line); border-radius: 20px; padding: 7px 12px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; transition: background .15s, border-color .15s; }
+.map-course-toggles button[aria-pressed="true"] { background: light-dark(#f4f1e9, #302d25); border-color: light-dark(#d4c5a5, #776746); color: var(--text); }
+.map-course-toggles button[aria-pressed="false"] svg { opacity: 0; }
+.course-map .map-canvas { height: 430px; }
+.map-canvas-wrap { position: relative; border-radius: 20px; overflow: hidden; border: 1px solid var(--line); }
+.map-canvas { height: 300px; background: light-dark(#f5f5f3, #222323); }
+.map-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; padding: 24px; text-align: center; background: light-dark(#f6f6f3, #232322); color: var(--muted); }
+.map-placeholder svg { color: light-dark(#85652f, #e9cb87); }
+.map-placeholder strong { font-weight: 500; font-size: 14px; color: var(--text); }
+.map-placeholder span { font-size: 12px; max-width: 280px; }
+.map-unresolved { margin: 0; padding: 10px 14px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); }
+.map-location-note { margin: 10px 0 0; font-size: 11px; color: var(--muted); }
+.map-empty, .map-message { padding: 32px 18px; text-align: center; color: var(--muted); font-size: 13px; }
+.map-card { border-radius: 24px; overflow: hidden; padding: 22px; }
+.map-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.map-heading h1 { margin: 0; font-size: 17px; font-weight: 500; letter-spacing: -.3px; }
+.map-heading p { color: var(--muted); font-size: 12px; margin: 3px 0 0; }
+.room-status { color: var(--muted); font-size: 11px; white-space: nowrap; border: 1px solid var(--line); padding: 4px 10px; border-radius: 20px; }
+.room-facts { display: grid; gap: 6px; margin: 18px 0; }
+.room-facts strong { font-size: 15px; font-weight: 500; }
+.room-facts p { margin: 0; font-size: 12px; color: var(--muted); }
+.room-source { font-size: 12px; }
+@media(max-width: 480px) {
+  .map-card { padding: 16px; border-radius: 20px; }
+  .map-heading { align-items: flex-start; }
+  .map-heading h1 { font-size: 16px; }
+  .map-canvas { height: 260px; }
+  .course-map .map-canvas { height: 370px; }
+  .map-course-toggles { gap: 6px; }
+  .map-course-toggles button { padding: 7px 10px; }
+}
+@media(prefers-reduced-motion: reduce) {
+  .map-course-toggles button { transition: none; }
+}

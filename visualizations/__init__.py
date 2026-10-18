@@ -11,6 +11,9 @@ from .deadlines import register_deadlines
 from .materials import register_materials
 from .gradebook import register_gradebook
 from .grade_target import register_grade_target
+from .degree_progress import register_degree_progress
+from .course_map import register_course_map
+from .study_rooms import register_study_rooms
 
 
 def register_visualizations(mcp: FastMCP, *, get_client: Callable[[], Moodle], clean: Callable[[dict], dict],
@@ -22,3 +25,6 @@ def register_visualizations(mcp: FastMCP, *, get_client: Callable[[], Moodle], c
     register_materials(mcp, get_client=get_client)
     register_gradebook(mcp, get_client=get_client, read_grades=read_grades)
     register_grade_target(mcp, get_client=get_client, read_grades=read_grades)
+    register_degree_progress(mcp, clean=clean)
+    register_course_map(mcp, clean=clean)
+    register_study_rooms(mcp)

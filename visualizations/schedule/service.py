@@ -45,6 +45,7 @@ def meeting(raw):
     days = ''.join(day for day in 'MTWRFSU' if day in days) if re.fullmatch(r'[MTWRFSU]+', days) else ''
     return Meeting(days=days, start_minute=start, end_minute=end, time_label=time_label,
                    location=text(raw.get('location'), 'Location TBA'), kind=text(raw.get('type'), limit=100),
+                   building=text(raw.get('building')), room=text(raw.get('room'), limit=80),
                    start_date=first, end_date=last)
 
 

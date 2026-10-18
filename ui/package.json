@@ -7,6 +7,7 @@
     "build:ui": "node build.mjs"
   },
   "dependencies": {
+    "@apple/mapkit-loader": "1.0.0",
     "@samasante/liquid-glass": "0.1.1",
     "react": "19.3.1",
     "react-dom": "19.3.1"
